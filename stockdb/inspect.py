@@ -72,11 +72,14 @@ def inspect_symbol(client: YahooClient, symbol: str) -> dict:
     return out
 
 
-def run_inspect(symbols: list[str]) -> list[dict]:
+def run_inspect(symbols: list[str], compact: bool = False) -> list[dict]:
     client = YahooClient(rate=2.0)
     results = []
     for symbol in symbols:
         info = inspect_symbol(client, symbol)
         results.append(info)
-        print(json.dumps(info, indent=1, sort_keys=True), flush=True)
+        if compact:
+            print("INSPECT " + json.dumps(info, sort_keys=True, separators=(",", ":")), flush=True)
+        else:
+            print(json.dumps(info, indent=1, sort_keys=True), flush=True)
     return results

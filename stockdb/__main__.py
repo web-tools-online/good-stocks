@@ -44,6 +44,7 @@ def main(argv=None) -> int:
 
     p = sub.add_parser("inspect", help="print raw Yahoo Finance fields of some tickers (debugging)")
     p.add_argument("symbols", nargs="+")
+    p.add_argument("--compact", action="store_true", help="one JSON line per ticker")
 
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -75,7 +76,7 @@ def main(argv=None) -> int:
     elif args.command == "inspect":
         from .inspect import run_inspect
 
-        run_inspect(args.symbols)
+        run_inspect(args.symbols, args.compact)
     return 0
 
 
