@@ -9,9 +9,9 @@ It shows the metrics from the HelloStocks screener (revenue and earnings growth,
 
 ## One-time setup
 
-1. Merge this branch into `main`.
-2. **Settings → Pages → Build and deployment → Source: _GitHub Actions_.**
-3. **Actions → "Update stock data" → Run workflow** (or wait for Saturday). The first full run takes about an hour. After that the site is live at the address above.
+1. **Settings → Pages → Build and deployment → Source: _GitHub Actions_.** Do this first, because the update below publishes the site.
+2. Merge this branch into `main`. This starts the first full data update automatically (about 30–60 minutes). After that the site is live at the address above.
+3. If the first run's *deploy* job failed (for example because Pages wasn't enabled yet), start it again: **Actions → "Update stock data" → Run workflow**.
 
 ## What is on the page
 
@@ -51,7 +51,7 @@ Saturday 04:23 UTC  ──►  universe ──► fetch × 12 shards (parallel) 
 * **EU**: equities on the main exchange of each EU member state covered by Yahoo Finance (Xetra, Euronext Paris/Amsterdam/Brussels/Lisbon/Dublin, Borsa Italiana, BME, Wiener Börse, Nasdaq Nordic & Baltic, Warsaw, Athens, Budapest, Bucharest). Two rules keep the list clean:
   * Foreign companies traded on those exchanges, such as Apple on Xetra, are excluded.
   * A company listed on several EU exchanges is kept once, on its home exchange.
-* **Czech**: all shares on the Prague Stock Exchange.
+* **Czech**: all shares traded on the Prague Stock Exchange, including foreign companies listed there (e.g. Erste, Deutsche Telekom).
 
 The database is never committed to git, so the repository stays small. Each run downloads the current `stocks.db` from the `data` release, overwrites last week's numbers with the current ones and uploads it again. It keeps no history. A copy is also kept as a workflow artifact for 30 days. If a ticker fails to download, it keeps last week's numbers. A small `data/summary.json` is committed each week. That commit also stops GitHub from pausing the schedule, which it does after 60 days without repository activity.
 
