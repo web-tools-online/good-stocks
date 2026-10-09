@@ -29,8 +29,9 @@ FIELDS = [
     ("mc", "m.market_cap_usd", 0),
     ("pe", "m.pe_ttm", 2),
     ("peb", "m.pe_basis", None),
-    ("dy", "m.dividend_yield", 4),
-    ("dyb", "m.dividend_basis", None),
+    # a yield of 100 %+ is always a data error, also in rows saved before the checks existed
+    ("dy", "CASE WHEN m.dividend_yield < 1 THEN m.dividend_yield END", 4),
+    ("dyb", "CASE WHEN m.dividend_yield >= 1 THEN 'invalid' ELSE m.dividend_basis END", None),
     ("g1", "m.rev_growth_1y", 4),
     ("g1b", "m.rev_growth_1y_basis", None),
     ("g4", "m.rev_growth_4y", 4),

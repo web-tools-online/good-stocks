@@ -192,3 +192,18 @@ def test_fetch_one_uses_statement_currency():
     rec = pipeline.fetch_one(Client(), {"symbol": "01P.DE", "market": "EU"})
     assert rec["profile"]["financial_currency"] == "USD"
     assert pipeline.listing_status("EU", rec["profile"])[0] == "excluded"
+
+
+def test_export_hides_impossible_yield_saved_before_checks(workdir):
+    db_path = workdir / "stocks.db"
+    pipeline.run_build(str(db_path), str(workdir / "universe.json"), [str(workdir / "raw" / "*.jsonl.gz")])
+    con = sqlite3.connect(db_path)
+    # a row from an older version: raw Yahoo yield, no basis
+    con.execute("UPDATE metrics SET dividend_yield = 173.13, dividend_basis = NULL WHERE symbol = 'GOOD'")
+    con.commit()
+    con.close()
+    out = workdir / "site_out"
+    export.run_export(str(db_path), str(ROOT / "site"), str(out))
+    data = json.loads((out / "data" / "stocks.json").read_text())
+    good = next(dict(zip(data["fields"], r)) for r in data["rows"] if r[0] == "GOOD")
+    assert good["dy"] is None and good["dyb"] == "invalid"
