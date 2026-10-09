@@ -12,7 +12,6 @@ It shows the metrics from the HelloStocks screener (revenue and earnings growth,
 1. Merge this branch into `main`.
 2. **Settings → Pages → Build and deployment → Source: _GitHub Actions_.**
 3. **Actions → "Update stock data" → Run workflow** (or wait for Saturday). The first full run takes about an hour. After that the site is live at the address above.
-4. **Settings → Secrets and variables → Actions → Variables → New repository variable:** `SEC_USER_AGENT` = `Your Name your@email.com`. SEC EDGAR, the source of older US annual figures, refuses requests that don't name a contact.
 
 ## What is on the page
 
@@ -37,9 +36,9 @@ Other features:
 
 **About 5-year growth:** this is the only metric that needs older data, and only two numbers per year are kept for it: annual revenue and net income.
 * Yahoo Finance reports the last 4 fiscal years.
-* For US companies the older years come from SEC EDGAR. This is downloaded only when the database is missing them, normally once.
-* For EU and Czech companies there is no free source of older figures. The database keeps each year's report (at most 7 years back), so their 5-year figure becomes exact year by year.
+* The database keeps each year's figures (at most 7 years back), so the 5-year figure becomes exact as the years pass.
 * Until a company has 5 years of data, its figure is marked `≈`: the yearly growth rate over the years available, extended to 5 years.
+* A possible later addition: older US figures from SEC EDGAR would make US values exact right away.
 
 Nothing else is stored historically: no weekly snapshots, prices or quarterly history.
 
@@ -49,8 +48,7 @@ Nothing else is stored historically: no weekly snapshots, prices or quarterly hi
 Saturday 04:23 UTC  ──►  universe ──► fetch × 12 shards (parallel) ──► build ──► deploy
                           │             │                               │          │
    Nasdaq Trader lists ───┤             │ Yahoo Finance: current        │          └─► GitHub Pages
-   Yahoo screener (EU/CZ) ┘             │ profile, key stats,           ├─► SEC EDGAR (older US years, if missing)
-                                        │                               ├─► ECB exchange rates
+   Yahoo screener (EU/CZ) ┘             │ profile, key stats,           ├─► ECB exchange rates
                                         │ statements, PEG               ├─► stocks.db  (release asset "data")
                                         │                               └─► site/data/stocks.json + stocks.csv
 ```
@@ -108,7 +106,6 @@ python -m http.server --directory _site 8000   # open http://localhost:8000
 Code layout: `stockdb/` holds the Python pipeline:
 * `universe.py`: ticker lists
 * `yahoo.py`: Yahoo Finance client
-* `sec.py`: older US annual figures from SEC EDGAR
 * `metrics.py`: metric formulas
 * `pipeline.py`: the universe, fetch and build steps
 * `export.py`: JSON/CSV for the site

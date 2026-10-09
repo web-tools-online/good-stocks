@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from stockdb import export, fx, pipeline, sec
+from stockdb import export, fx, pipeline
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -48,7 +48,6 @@ def _record(symbol, market, name, country, currency="USD", quote_type="EQUITY", 
 @pytest.fixture
 def workdir(tmp_path, monkeypatch):
     monkeypatch.setattr(fx, "fetch_ecb", lambda: ("2026-10-09", {"USD": 1.0, "EUR": 1.1, "CZK": 0.045}))
-    monkeypatch.setattr(sec, "fetch_sec_history", lambda symbols: {})
     listings = [
         {"symbol": "GOOD", "market": "US", "name": "Good Corp", "exchange_name": "NASDAQ"},
         {"symbol": "ETFX", "market": "US", "name": "Some ETF", "exchange_name": "NYSE Arca"},
@@ -174,32 +173,8 @@ def test_delisting_and_incomplete_universe(workdir):
     assert status["SAP.DE"] == "active" and status["AIR.PA"] == "active"
 
 
-def test_sec_fills_older_years_once(workdir, monkeypatch):
-    calls = []
-
-    def fake_sec(symbols):
-        calls.append(symbols)
-        return {"GOOD": {"revenue": {"2020-12-31": 75.0, "2021-12-31": 90.0, "2022-12-31": 100.0},
-                         "net_income": {"2020-12-31": 8.0, "2022-12-31": 10.0}}}
-
-    monkeypatch.setattr(sec, "fetch_sec_history", fake_sec)
-    db_path = workdir / "stocks.db"
-    pipeline.run_build(str(db_path), str(workdir / "universe.json"), [str(workdir / "raw" / "*.jsonl.gz")])
-    con = sqlite3.connect(db_path)
-    rev, years, earn, earn_years = con.execute(
-        "SELECT rev_growth_5y, rev_growth_5y_years, earn_growth_5y, earn_growth_5y_years FROM metrics "
-        "WHERE symbol = 'GOOD'").fetchone()
-    assert years == 5 and rev == pytest.approx(150 / 75 - 1)
-    assert earn_years == 5 and earn == pytest.approx(20 / 8 - 1)
-    assert con.execute("SELECT COUNT(*) FROM annual_figures WHERE symbol = 'GOOD' AND source = 'sec'").fetchone()[0] == 2
-    con.close()
-    # The base years are stored now, so the next run does not download them again.
-    pipeline.run_build(str(db_path), str(workdir / "universe.json"), [str(workdir / "raw" / "*.jsonl.gz")])
-    assert len(calls) == 1
-
-
 def test_annual_figures_build_up_over_years(workdir):
-    """EU companies have no SEC: each year's report is kept, so the 5-year span fills in."""
+    """Each year's report is kept, so the 5-year span fills in over time."""
     db_path = workdir / "stocks.db"
     pipeline.run_build(str(db_path), str(workdir / "universe.json"), [str(workdir / "raw" / "*.jsonl.gz")])
     # A year later Yahoo reports 2023-2026; 2022 is still in the database.

@@ -3,9 +3,8 @@ name: Update stock data
 # Weekly refresh of the stock database and the website.
 #   universe  - builds the list of all US / EU / Czech tickers and splits it into shards
 #   fetch     - downloads fundamentals from Yahoo Finance, one parallel job per shard
-#   build     - stores the current snapshot in the SQLite database (+ older US annual
-#               figures from SEC EDGAR when missing), publishes the database as a
-#               release asset and builds the website
+#   build     - stores the current snapshot in the SQLite database, publishes the
+#               database as a release asset and builds the website
 #   deploy    - publishes the website on GitHub Pages
 # Pushes to other branches than main run a small smoke test and publish nothing.
 
@@ -144,8 +143,6 @@ jobs:
           path: work/raw
           merge-multiple: true
       - name: Update the database
-        env:
-          SEC_USER_AGENT: ${{ vars.SEC_USER_AGENT }}
         run: python -m stockdb build --db work/stocks.db --universe work/universe.json --raw "work/raw/*.jsonl.gz"
       - name: Export the website
         run: python -m stockdb export --db work/stocks.db --site site --out _site --summary data/summary.json

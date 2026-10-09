@@ -58,13 +58,13 @@ CREATE TABLE IF NOT EXISTS metrics (
 
 -- Annual revenue and net income, kept only for the 5-year growth rates (at most the
 -- last ANNUAL_FIGURES_KEEP_YEARS fiscal years of active listings). Yahoo reports the
--- last 4 years; older years come from SEC EDGAR (US) or from earlier weekly runs.
+-- last 4 years; older years are the ones kept from earlier weekly runs.
 CREATE TABLE IF NOT EXISTS annual_figures (
     symbol      TEXT NOT NULL,
     fy_end      TEXT NOT NULL,   -- fiscal year end date
     revenue     REAL,
     net_income  REAL,
-    source      TEXT NOT NULL,   -- yahoo | sec
+    source      TEXT NOT NULL,   -- yahoo
     PRIMARY KEY (symbol, fy_end)
 );
 

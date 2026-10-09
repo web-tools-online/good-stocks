@@ -13,7 +13,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from . import config, db, fx, metrics, sec
+from . import config, db, fx, metrics
 from .universe import build_universe
 
 log = logging.getLogger(__name__)
@@ -196,7 +196,7 @@ def normalize_name(name: str | None) -> str:
     return re.sub(r"\s+", " ", name).strip()
 
 
-def run_build(db_path: str, universe_path: str, raw_patterns: list[str], use_sec: bool = True) -> dict:
+def run_build(db_path: str, universe_path: str, raw_patterns: list[str]) -> dict:
     """Store the current snapshot: listings and their latest metrics.
 
     The only history kept is annual revenue / net income for the 5-year growth rates.
@@ -251,15 +251,7 @@ def run_build(db_path: str, universe_path: str, raw_patterns: list[str], use_sec
             active.append(rec)
     log.info("applied %d fetch results: %s", len(records), counts)
 
-    # 4. Older annual figures for US companies (SEC EDGAR), only when they are missing --
-    if use_sec and _sec_needed(con, today):
-        try:
-            if _apply_sec(con, now_s):
-                db.set_meta(con, "sec_last_fetch", today.isoformat())
-        except Exception as exc:  # optional data source
-            log.exception("SEC EDGAR failed: %s", exc)
-
-    # 5. Current metrics ------------------------------------------------------------------
+    # 4. Current metrics ------------------------------------------------------------------
     n_metrics = sum(_store_metrics(con, rec, rates, today) for rec in active)
 
     # Listings that failed this week keep last week's metrics (hidden after MAX_STALE_DAYS).
@@ -332,8 +324,8 @@ def _store_metrics(con, rec: dict, rates: dict, today: dt.date) -> int:
     symbol = rec["symbol"]
     profile = rec.get("profile") or {}
     stats = rec.get("stats") or {}
-    # Annual revenue / net income come from the database (Yahoo's 4 years + older
-    # years kept from SEC or earlier runs); everything else from the current fetch.
+    # Annual revenue / net income come from the database (Yahoo's 4 years + older years
+    # kept from earlier runs); everything else from the current fetch.
     rows = [(p, i, e, v) for p, i, e, v in rec.get("series") or []
             if not (p == "A" and i in ("revenue", "net_income"))]
     for fy_end, revenue, net_income in con.execute(
@@ -358,47 +350,6 @@ def _store_metrics(con, rec: dict, rates: dict, today: dt.date) -> int:
         "fcf_ttm_usd": m["fcf_ttm"] * fin_rate if m["fcf_ttm"] is not None and fin_rate else None,
     })
     return 1
-
-
-def _sec_needed(con, today: dt.date) -> bool:
-    """Download SEC history only if many US companies lack a 5-years-back figure."""
-    last = db.get_meta(con, "sec_last_fetch")
-    if last and (today - dt.date.fromisoformat(last)).days < config.SEC_REFRESH_DAYS:
-        return False
-    rows = con.execute(
-        "SELECT a.symbol, MIN(a.fy_end), MAX(a.fy_end) FROM annual_figures a "
-        "JOIN listings l USING (symbol) WHERE l.market = 'US' AND l.status = 'active' GROUP BY a.symbol").fetchall()
-    if not rows:
-        return False
-    covered = sum(1 for _, first, latest in rows
-                  if (dt.date.fromisoformat(latest) - dt.date.fromisoformat(first)).days >= 365 * 5 - 75)
-    log.info("US companies with 5 years of annual figures: %d of %d", covered, len(rows))
-    return covered < 0.5 * len(rows)
-
-
-def _apply_sec(con, now_s: str) -> int:
-    """Add validated older fiscal years from SEC EDGAR; returns the number of companies matched."""
-    symbols = [r[0] for r in con.execute("SELECT symbol FROM listings WHERE market = 'US' AND status = 'active'")]
-    if not symbols:
-        return 0
-    history = sec.fetch_sec_history(symbols)
-    added = 0
-    for symbol, items in history.items():
-        yahoo = {r[0]: (r[1], r[2]) for r in con.execute(
-            "SELECT fy_end, revenue, net_income FROM annual_figures WHERE symbol = ? AND source = 'yahoo'", (symbol,))}
-        extra: dict[str, dict] = {}
-        for idx, item in enumerate(("revenue", "net_income")):
-            known = {end: v[idx] for end, v in yahoo.items() if v[idx] is not None}
-            for end, value in sec.validated_extension(known, items.get(item, {})).items():
-                extra.setdefault(end, {})[item] = value
-        for end, values in extra.items():
-            con.execute(
-                "INSERT INTO annual_figures (symbol, fy_end, revenue, net_income, source) VALUES (?, ?, ?, ?, 'sec') "
-                "ON CONFLICT (symbol, fy_end) DO NOTHING",
-                (symbol, end, values.get("revenue"), values.get("net_income")))
-            added += 1
-    log.info("SEC: %d companies matched, %d older fiscal years added", len(history), added)
-    return len(history)
 
 
 def _update_fx(con, currencies: set[str]) -> dict[str, float]:

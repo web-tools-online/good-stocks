@@ -31,7 +31,6 @@ def main(argv=None) -> int:
     p.add_argument("--db", default="work/stocks.db")
     p.add_argument("--universe", default="work/universe.json")
     p.add_argument("--raw", nargs="+", default=["work/raw/*.jsonl.gz"])
-    p.add_argument("--no-sec", action="store_true", help="never download older US figures from SEC EDGAR")
 
     p = sub.add_parser("export", help="export the database to the static site")
     p.add_argument("--db", default="work/stocks.db")
@@ -61,7 +60,7 @@ def main(argv=None) -> int:
     elif args.command == "build":
         from .pipeline import run_build
 
-        run_build(args.db, args.universe, args.raw, use_sec=not args.no_sec)
+        run_build(args.db, args.universe, args.raw)
     elif args.command == "export":
         from .export import run_export
 
