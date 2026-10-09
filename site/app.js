@@ -5,8 +5,8 @@
  * ------------------------------------------------------------------------- */
 const DEFAULT_CRITERIA = [
   { id: "g1",  label: "Revenue growth (1Y, TTM)", op: "≥", value: 5,  unit: "%" },
-  { id: "e5",  label: "Earnings growth (5Y)",     op: "≥", value: 50, unit: "%" },
-  { id: "g5",  label: "Revenue growth (5Y)",      op: "≥", value: 50, unit: "%" },
+  { id: "e4",  label: "Earnings growth (4Y)",     op: "≥", value: 30, unit: "%" },
+  { id: "g4",  label: "Revenue growth (4Y)",      op: "≥", value: 30, unit: "%" },
   { id: "roe", label: "Return on equity",         op: "≥", value: 15, unit: "%" },
   { id: "de",  label: "Debt to equity",           op: "≤", value: 1,  unit: "×" },
   { id: "fcf", label: "Free cash flow (TTM)",     op: ">", value: 0,  unit: "$M" },
@@ -15,8 +15,8 @@ const DEFAULT_CRITERIA = [
 
 const PASS = {
   g1:  (r, t) => r.g1 != null && r.g1 * 100 >= t,
-  e5:  (r, t) => r.e5 != null && r.e5 * 100 >= t,
-  g5:  (r, t) => r.g5 != null && r.g5 * 100 >= t,
+  e4:  (r, t) => r.e4 != null && r.e4 * 100 >= t,
+  g4:  (r, t) => r.g4 != null && r.g4 * 100 >= t,
   roe: (r, t) => r.roe != null && r.roe * 100 >= t,
   de:  (r, t) => r.de != null && r.de >= 0 && r.de <= t,
   fcf: (r, t) => r.fcfu != null ? r.fcfu > t * 1e6 : (t === 0 && r.fcf != null && r.fcf > 0),
@@ -43,8 +43,8 @@ const COLUMNS = [
   { key: "mc",  label: "Market Cap", sort: (r) => r.mc },
   { key: "crit", label: "Criteria", sort: (r) => r._pass + (r.mc || 0) / 1e16 },
   { key: "g1",  label: "Revenue Growth (1Y, TTM)", crit: "g1", sort: (r) => r.g1 },
-  { key: "e5",  label: "Earnings Growth (5Y)", crit: "e5", sort: (r) => r.e5 },
-  { key: "g5",  label: "Revenue Growth (5Y)", crit: "g5", sort: (r) => r.g5 },
+  { key: "e4",  label: "Earnings Growth (4Y)", crit: "e4", sort: (r) => r.e4 },
+  { key: "g4",  label: "Revenue Growth (4Y)", crit: "g4", sort: (r) => r.g4 },
   { key: "roe", label: "ROE", crit: "roe", sort: (r) => r.roe },
   { key: "de",  label: "Debt to Equity", crit: "de", sort: (r) => r.de },
   { key: "fcf", label: "Free Cash Flow (TTM)", crit: "fcf", sort: (r) => r.fcfu },
@@ -88,7 +88,7 @@ function load(key, fallback) {
 }
 
 function loadCriteria() {
-  const saved = load("gs-criteria", null) || {};
+  const saved = load("gs-criteria-v2", null) || {};
   return DEFAULT_CRITERIA.map((c) => {
     const s = saved[c.id] || {};
     return { ...c, enabled: s.enabled !== false, value: typeof s.value === "number" ? s.value : c.value };
@@ -97,7 +97,7 @@ function loadCriteria() {
 function saveCriteria() {
   const out = {};
   state.criteria.forEach((c) => { out[c.id] = { enabled: c.enabled, value: c.value }; });
-  store("gs-criteria", out);
+  store("gs-criteria-v2", out);
 }
 
 /* ----------------------------------------------------------------------------
@@ -246,13 +246,10 @@ function cellClass(r, critId) {
   return r._res[critId] ? "pass" : "fail";
 }
 
-function growthCell(r, key, yearsKey, critId) {
+function growthCell(r, key, critId) {
   const v = r[key];
   if (v == null) return `<td class="na">—</td>`;
-  const years = r[yearsKey];
-  const approx = years != null && years < 5;
-  const title = approx ? ` title="Only ${years} years of data so far: the yearly growth rate is extended to 5 years"` : "";
-  return `<td class="${cellClass(r, critId)}"${title}>${approx ? '<span class="approx">≈</span>' : ""}${pctFmt(v)}</td>`;
+  return `<td class="${cellClass(r, critId)}">${pctFmt(v)}</td>`;
 }
 
 function renderBody() {
@@ -273,8 +270,8 @@ function renderBody() {
       <td>${moneyFmt(mc.value, mc.currency)}</td>
       <td><span class="badge ${badge}">${r._pass}/${total}</span></td>
       ${r.g1 == null ? '<td class="na">—</td>' : `<td class="${cellClass(r, "g1")}"${g1Title}>${pctFmt(r.g1)}${basisApprox ? '<span class="approx">*</span>' : ""}</td>`}
-      ${growthCell(r, "e5", "e5y", "e5")}
-      ${growthCell(r, "g5", "g5y", "g5")}
+      ${growthCell(r, "e4", "e4")}
+      ${growthCell(r, "g4", "g4")}
       <td class="${r.roe == null ? "na" : cellClass(r, "roe")}">${pctFmt(r.roe)}</td>
       <td class="${r.de == null ? "na" : cellClass(r, "de")}">${numFmt(r.de)}</td>
       <td class="${fcf.value == null ? "na" : cellClass(r, "fcf")}">${moneyFmt(fcf.value, fcf.currency)}</td>
@@ -378,13 +375,13 @@ function syncControls() {
  * ------------------------------------------------------------------------- */
 function downloadView() {
   const head = ["Ticker", "Company", "Market", "Exchange", "Country", "Sector", "Industry", "Market Cap (USD)",
-    "Criteria met", "Revenue Growth 1Y %", "Earnings Growth 5Y %", "Revenue Growth 5Y %", "ROE %",
+    "Criteria met", "Revenue Growth 1Y %", "Earnings Growth 4Y %", "Revenue Growth 4Y %", "ROE %",
     "Debt to Equity", "Free Cash Flow TTM (USD)", "PEG 5Y", "P/E TTM"];
   const pct = (v) => (v == null ? "" : (v * 100).toFixed(2));
   const lines = [head];
   for (const r of state.filtered) {
-    lines.push([r.s, r.n, r.m, r.x, r.c, r.sec, r.ind, r.mc, `${r._pass}/${state.activeCount}`, pct(r.g1), pct(r.e5),
-      pct(r.g5), pct(r.roe), r.de, r.fcfu, r.peg, r.pe]);
+    lines.push([r.s, r.n, r.m, r.x, r.c, r.sec, r.ind, r.mc, `${r._pass}/${state.activeCount}`, pct(r.g1), pct(r.e4),
+      pct(r.g4), pct(r.roe), r.de, r.fcfu, r.peg, r.pe]);
   }
   const csv = lines.map((l) => l.map((v) => {
     const s = v == null ? "" : String(v);

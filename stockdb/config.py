@@ -73,8 +73,5 @@ EXCLUSION_RECHECK_DAYS = 120
 # Listings whose last successful fetch is older than this are not shown on the site.
 MAX_STALE_DAYS = 45
 
-# Annual revenue / net income are kept only as far back as the 5-year growth needs.
-ANNUAL_FIGURES_KEEP_YEARS = 7
-
 # ECB euro reference rates, used to convert everything to USD for sorting/filtering.
 ECB_RATES_URL = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"

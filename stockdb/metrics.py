@@ -1,7 +1,7 @@
 """Compute the screener metrics from the current Yahoo Finance data.
 
 All functions are pure. ``statements`` holds the statement figures Yahoo returns with the
-current fundamentals (the last ~4 fiscal years and ~5 quarters). It maps
+current fundamentals (the last 4 fiscal years and ~5 quarters). It maps
 ``(period, item)`` to a list of ``(end_date, value)`` tuples sorted by date, where
 period is ``A`` (annual), ``Q`` (quarterly) or ``T`` (trailing twelve months).
 """
@@ -42,32 +42,18 @@ def _ratio_growth(new: float, old: float):
     return (new - old) / old
 
 
-def growth_5y(annual: Series, target_years: int = 5, min_years: int = 3,
-              today: dt.date | None = None, max_age_days: int = 640):
-    """Cumulative growth over ``target_years`` fiscal years.
+def growth_4y(annual: Series, today: dt.date | None = None, max_age_days: int = 640):
+    """Change between the oldest and the latest of the last four fiscal years.
 
-    Uses the latest fiscal year and the year ``target_years`` earlier. Yahoo usually
-    reports only the last four fiscal years, so the longest available span of at least
-    ``min_years`` is used and its compound annual rate is extended to ``target_years``.
-
-    Returns ``(growth, years_used)`` or ``(None, None)``.
+    Yahoo Finance reports the four most recent fiscal years (e.g. FY2022-FY2025), so this
+    is the latest fiscal year compared with the one three years before it.
     """
     if not annual:
-        return None, None
+        return None
     end_date, latest = annual[-1]
     if today and (today - end_date).days > max_age_days:
-        return None, None
-    for years in range(target_years, min_years - 1, -1):
-        base = _find(annual, _years_before(end_date, years), 75)
-        if base is None:
-            continue
-        g = _ratio_growth(latest, base)
-        if g is None:
-            return None, None
-        if years < target_years and latest > 0:
-            g = (latest / base) ** (target_years / years) - 1
-        return g, years
-    return None, None
+        return None
+    return _ratio_growth(latest, _find(annual, _years_before(end_date, 3), 75))
 
 
 def _consecutive_quarters(quarterly: Series, n: int):
@@ -143,10 +129,10 @@ def compute(statements: dict, stats: dict, today: dt.date | None = None) -> dict
     out["rev_growth_1y"], out["rev_growth_1y_basis"] = revenue_growth_1y(
         statements, stats.get("revenue_growth_q"), today)
 
-    out["rev_growth_5y"], out["rev_growth_5y_years"] = growth_5y(statements.get(("A", "revenue"), []), today=today)
+    out["rev_growth_4y"] = growth_4y(statements.get(("A", "revenue"), []), today=today)
 
     income = statements.get(("A", "net_income")) or statements.get(("A", "net_income_common"), [])
-    out["earn_growth_5y"], out["earn_growth_5y_years"] = growth_5y(income, today=today)
+    out["earn_growth_4y"] = growth_4y(income, today=today)
 
     # TTM figures
     _, revenue_ttm = _latest(statements.get(("T", "revenue"), []), today, 500)

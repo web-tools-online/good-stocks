@@ -114,17 +114,14 @@ def test_build_and_export(workdir):
     assert set(m) == {"GOOD", "SAP.DE", "AIR.PA", "CEZ.PR", "CTPNV.PR", "EMPTY.PR"}
     assert m["CTPNV.PR"]["market_cap_usd"] == pytest.approx(18.0 * 4.5e8 * 1.1)
     good = m["GOOD"]
-    assert good["rev_growth_5y_years"] == 3
-    assert good["rev_growth_5y"] == pytest.approx(1.5 ** (5 / 3) - 1)
+    assert good["rev_growth_4y"] == pytest.approx(0.5)  # 150 vs 100, FY2025 vs FY2022
+    assert good["earn_growth_4y"] == pytest.approx(1.0)
     assert good["roe"] == 0.25 and good["debt_to_equity"] == pytest.approx(0.3)
     assert good["fcf_ttm"] == pytest.approx(18)
     assert m["CEZ.PR"]["market_cap_usd"] == pytest.approx(6e12 * 0.045)
     assert m["SAP.DE"]["fcf_ttm_usd"] == pytest.approx(18 * 1.1)
     tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
-    assert "annual_figures" in tables and not tables & {"history", "financials"}
-    # only revenue / net income of active listings are kept
-    kept = {r[0] for r in con.execute("SELECT DISTINCT symbol FROM annual_figures")}
-    assert kept == {"GOOD", "SAP.DE", "AIR.PA", "CEZ.PR", "CTPNV.PR"}
+    assert tables == {"listings", "metrics", "fx_rates", "runs", "meta", "sqlite_sequence"}  # no history
     con.close()
 
     out = workdir / "site_out"
@@ -171,25 +168,6 @@ def test_delisting_and_incomplete_universe(workdir):
     status = dict(con.execute("SELECT symbol, status FROM listings"))
     assert status["FAIL"] == "delisted"
     assert status["SAP.DE"] == "active" and status["AIR.PA"] == "active"
-
-
-def test_annual_figures_build_up_over_years(workdir):
-    """Each year's report is kept, so the 5-year span fills in over time."""
-    db_path = workdir / "stocks.db"
-    pipeline.run_build(str(db_path), str(workdir / "universe.json"), [str(workdir / "raw" / "*.jsonl.gz")])
-    # A year later Yahoo reports 2023-2026; 2022 is still in the database.
-    later = _record("SAP.DE", "EU", "SAP SE", "Germany", currency="EUR", exchange="GER",
-                    series=_series([110, 130, 150, 180], [12, 15, 20, 24], last_year=2026))
-    raw2 = workdir / "raw2"
-    raw2.mkdir()
-    with gzip.open(raw2 / "raw-0.jsonl.gz", "wt") as fh:
-        fh.write(json.dumps(later) + "\n")
-    pipeline.run_build(str(db_path), str(workdir / "universe.json"), [str(raw2 / "*.jsonl.gz")])
-    con = sqlite3.connect(db_path)
-    ends = [r[0] for r in con.execute("SELECT fy_end FROM annual_figures WHERE symbol = 'SAP.DE' ORDER BY fy_end")]
-    assert ends == ["2022-12-31", "2023-12-31", "2024-12-31", "2025-12-31", "2026-12-31"]
-    years, rev = con.execute("SELECT rev_growth_5y_years, rev_growth_5y FROM metrics WHERE symbol = 'SAP.DE'").fetchone()
-    assert years == 4 and rev == pytest.approx((180 / 100) ** (5 / 4) - 1)
 
 
 def test_fetch_one_uses_statement_currency():

@@ -3,7 +3,7 @@ import datetime as dt
 import pytest
 
 from stockdb import metrics
-from stockdb.metrics import growth_5y, revenue_growth_1y, statements_from_rows
+from stockdb.metrics import growth_4y, revenue_growth_1y, statements_from_rows
 
 D = dt.date
 
@@ -13,42 +13,34 @@ def annual(values, last_year=2025, month=12, day=31):
     return [(D(last_year - n + 1 + i, month, day), v) for i, v in enumerate(values)]
 
 
-def test_growth_5y_exact():
-    g, years = growth_5y(annual([100, 110, 120, 130, 140, 200]))
-    assert years == 5
-    assert g == pytest.approx(1.0)
+def test_growth_4y_latest_vs_oldest_of_four_years():
+    assert growth_4y(annual([100, 110, 121, 150])) == pytest.approx(0.5)
 
 
-def test_growth_5y_extrapolated_from_3_years():
-    # 4 fiscal years = 3-year span; 33.1% over 3 years = 10%/yr -> 61.05% over 5 years
-    g, years = growth_5y(annual([100, 110, 121, 133.1]))
-    assert years == 3
-    assert g == pytest.approx(1.1 ** 5 - 1, rel=1e-6)
+def test_growth_4y_uses_the_year_three_before_latest():
+    # more stored years than four: still FY0 vs FY-3
+    assert growth_4y(annual([50, 100, 110, 121, 150])) == pytest.approx(0.5)
 
 
-def test_growth_5y_needs_three_years():
-    assert growth_5y(annual([100, 110, 120])) == (None, None)
+def test_growth_4y_needs_four_years():
+    assert growth_4y(annual([100, 110, 120])) is None
 
 
-def test_growth_5y_non_positive_base():
-    assert growth_5y(annual([-5, 1, 2, 3, 4, 10])) == (None, None)
+def test_growth_4y_non_positive_base():
+    assert growth_4y(annual([-5, 2, 3, 10])) is None
 
 
-def test_growth_5y_negative_latest_not_extrapolated():
-    g, years = growth_5y(annual([100, 50, 20, -50]))
-    assert years == 3
-    assert g == pytest.approx(-1.5)
+def test_growth_4y_negative_latest():
+    assert growth_4y(annual([100, 50, 20, -50])) == pytest.approx(-1.5)
 
 
-def test_growth_5y_stale():
-    assert growth_5y(annual([100, 110, 120, 130], last_year=2020), today=D(2026, 10, 1)) == (None, None)
+def test_growth_4y_stale():
+    assert growth_4y(annual([100, 110, 120, 130], last_year=2020), today=D(2026, 10, 1)) is None
 
 
-def test_growth_5y_shifted_fiscal_year():
-    series = [(D(2020, 6, 30), 100), (D(2021, 7, 2), 110), (D(2022, 7, 1), 120), (D(2023, 6, 30), 130),
-              (D(2024, 6, 28), 150), (D(2025, 6, 27), 180)]
-    g, years = growth_5y(series)
-    assert years == 5 and g == pytest.approx(0.8)
+def test_growth_4y_shifted_fiscal_year():
+    series = [(D(2022, 7, 1), 120), (D(2023, 6, 30), 130), (D(2024, 6, 28), 150), (D(2025, 6, 27), 180)]
+    assert growth_4y(series) == pytest.approx(0.5)
 
 
 def test_revenue_growth_from_trailing_values():
@@ -97,8 +89,8 @@ def test_compute_prefers_yahoo_ratios_and_computes_fcf():
         ("Q", "equity", "2026-06-30", 100), ("Q", "total_debt", "2026-06-30", 40),
     ])
     m = metrics.compute(hist, {"roe": 0.3, "debt_to_equity_pct": 26.0, "peg_5y": 1.4}, today=D(2026, 9, 1))
-    assert m["rev_growth_5y"] == pytest.approx(1.0) and m["rev_growth_5y_years"] == 5
-    assert m["earn_growth_5y_years"] == 3 and m["earn_growth_5y"] == pytest.approx(2 ** (5 / 3) - 1)
+    assert m["rev_growth_4y"] == pytest.approx(150 / 110 - 1)  # FY2025 vs FY2022
+    assert m["earn_growth_4y"] == pytest.approx(1.0)
     assert m["fcf_ttm"] == 30
     assert m["roe"] == 0.3
     assert m["debt_to_equity"] == pytest.approx(0.26)
@@ -116,4 +108,4 @@ def test_compute_falls_back_to_statements():
     assert m["debt_to_equity"] == pytest.approx(0.5)
     assert m["fcf_ttm"] == -5
     assert m["peg_5y"] == 0.9
-    assert m["rev_growth_5y"] is None
+    assert m["rev_growth_4y"] is None

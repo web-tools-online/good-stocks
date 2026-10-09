@@ -31,10 +31,8 @@ FIELDS = [
     ("dy", "m.dividend_yield", 4),
     ("g1", "m.rev_growth_1y", 4),
     ("g1b", "m.rev_growth_1y_basis", None),
-    ("g5", "m.rev_growth_5y", 4),
-    ("g5y", "m.rev_growth_5y_years", None),
-    ("e5", "m.earn_growth_5y", 4),
-    ("e5y", "m.earn_growth_5y_years", None),
+    ("g4", "m.rev_growth_4y", 4),
+    ("e4", "m.earn_growth_4y", 4),
     ("roe", "m.roe", 4),
     ("de", "m.debt_to_equity", 3),
     ("fcf", "m.fcf_ttm", 0),
@@ -47,8 +45,8 @@ CSV_COLUMNS = [
     ("Ticker", "s"), ("Company", "n"), ("Market", "m"), ("Exchange", "x"), ("Country", "c"),
     ("Sector", "sec"), ("Industry", "ind"), ("Currency", "cur"), ("Price", "p"),
     ("Market Cap (USD)", "mc"), ("P/E (TTM)", "pe"), ("Dividend Yield", "dy"),
-    ("Revenue Growth (1Y, TTM)", "g1"), ("Earnings Growth (5Y)", "e5"), ("Years of earnings history", "e5y"),
-    ("Revenue Growth (5Y)", "g5"), ("Years of revenue history", "g5y"), ("ROE", "roe"),
+    ("Revenue Growth (1Y, TTM)", "g1"), ("Earnings Growth (4Y)", "e4"), ("Revenue Growth (4Y)", "g4"),
+    ("ROE", "roe"),
     ("Debt to Equity", "de"), ("Free Cash Flow (TTM)", "fcf"), ("Financial Currency", "fcur"),
     ("Free Cash Flow (TTM, USD)", "fcfu"), ("PEG (5Y expected)", "peg"), ("Data as of", "asof"),
 ]
@@ -133,7 +131,7 @@ def print_report(db_path: str, top: int = 15) -> None:
                          "GROUP BY 1 ORDER BY 2 DESC LIMIT 8"):
         print(f"  {r[1]:6}  {r[0]}")
     print("Metric coverage (non-null share of active listings with metrics):")
-    cols = ["rev_growth_1y", "earn_growth_5y", "rev_growth_5y", "roe", "debt_to_equity", "fcf_ttm", "peg_5y",
+    cols = ["rev_growth_1y", "earn_growth_4y", "rev_growth_4y", "roe", "debt_to_equity", "fcf_ttm", "peg_5y",
             "market_cap_usd"]
     for market in config.MARKETS:
         n = con.execute("SELECT COUNT(*) FROM metrics JOIN listings USING (symbol) WHERE market = ?",
@@ -145,9 +143,7 @@ def print_report(db_path: str, top: int = 15) -> None:
             k = con.execute(f"SELECT COUNT({c}) FROM metrics JOIN listings USING (symbol) WHERE market = ?",
                             (market,)).fetchone()[0]
             parts.append(f"{c}={100 * k // n}%")
-        exact = con.execute("SELECT COUNT(*) FROM metrics JOIN listings USING (symbol) WHERE market = ? "
-                            "AND rev_growth_5y_years = 5", (market,)).fetchone()[0]
-        print(f"  {market} ({n}): {' '.join(parts)} exact5y={100 * exact // n}%")
+        print(f"  {market} ({n}): {' '.join(parts)}")
 
     def pct(v):
         return "" if v is None else f"{v * 100:.1f}"
@@ -155,8 +151,8 @@ def print_report(db_path: str, top: int = 15) -> None:
     def num(v, d=2):
         return "" if v is None else f"{v:.{d}f}"
 
-    header = (f"{'symbol':10} {'name':26} {'country':14} {'mcap$bn':>8} {'g1%':>6} {'b':6} {'e5%':>7} {'y':>1} "
-              f"{'g5%':>7} {'y':>1} {'roe%':>6} {'d/e':>5} {'fcf$bn':>7} {'peg':>5}")
+    header = (f"{'symbol':10} {'name':26} {'country':14} {'mcap$bn':>8} {'g1%':>6} {'b':6} {'e4%':>7} "
+              f"{'g4%':>7} {'roe%':>6} {'d/e':>5} {'fcf$bn':>7} {'peg':>5}")
     for market in config.MARKETS:
         rows = con.execute(
             "SELECT l.symbol, l.name, l.country, m.* FROM listings l JOIN metrics m USING (symbol) "
@@ -169,7 +165,7 @@ def print_report(db_path: str, top: int = 15) -> None:
         for r in rows:
             print(f"{r['symbol'][:10]:10} {(r['name'] or '')[:26]:26} {(r['country'] or '')[:14]:14} "
                   f"{num((r['market_cap_usd'] or 0) / 1e9, 1):>8} {pct(r['rev_growth_1y']):>6} "
-                  f"{(r['rev_growth_1y_basis'] or ''):6} {pct(r['earn_growth_5y']):>7} {r['earn_growth_5y_years'] or '':>1} "
-                  f"{pct(r['rev_growth_5y']):>7} {r['rev_growth_5y_years'] or '':>1} {pct(r['roe']):>6} "
+                  f"{(r['rev_growth_1y_basis'] or ''):6} {pct(r['earn_growth_4y']):>7} "
+                  f"{pct(r['rev_growth_4y']):>7} {pct(r['roe']):>6} "
                   f"{num(r['debt_to_equity']):>5} {num((r['fcf_ttm_usd'] or 0) / 1e9):>7} {num(r['peg_5y']):>5}")
     con.close()

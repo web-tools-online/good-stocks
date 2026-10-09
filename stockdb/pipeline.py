@@ -197,10 +197,7 @@ def normalize_name(name: str | None) -> str:
 
 
 def run_build(db_path: str, universe_path: str, raw_patterns: list[str]) -> dict:
-    """Store the current snapshot: listings and their latest metrics.
-
-    The only history kept is annual revenue / net income for the 5-year growth rates.
-    """
+    """Store the current snapshot: listings and their latest metrics (no history is kept)."""
     con = db.connect(db_path)
     universe = json.loads(Path(universe_path).read_text())
     now = _now()
@@ -242,7 +239,7 @@ def run_build(db_path: str, universe_path: str, raw_patterns: list[str]) -> dict
         currencies.update(c for c in (profile.get("currency"), profile.get("financial_currency")) if c)
     rates = _update_fx(con, currencies)
 
-    # 3. Fetch results -> listing profile + annual figures ----------------------------
+    # 3. Fetch results -> listing profile ----------------------------------------------
     counts = {"ok": 0, "not_found": 0, "error": 0}
     active = []
     for rec in records:
@@ -257,10 +254,6 @@ def run_build(db_path: str, universe_path: str, raw_patterns: list[str]) -> dict
     # Listings that failed this week keep last week's metrics (hidden after MAX_STALE_DAYS).
     con.execute("DELETE FROM metrics WHERE symbol NOT IN (SELECT symbol FROM listings WHERE status = 'active')")
     _dedupe_eu(con, rates, now_s)
-    # Keep annual figures only for active listings and only as far back as needed.
-    cutoff = (today - dt.timedelta(days=365 * config.ANNUAL_FIGURES_KEEP_YEARS)).isoformat()
-    con.execute("DELETE FROM annual_figures WHERE fy_end < ? OR symbol NOT IN "
-                "(SELECT symbol FROM listings WHERE status = 'active')", (cutoff,))
 
     con.execute("INSERT INTO runs (finished, universe_size, fetched_ok, fetched_failed, notes) VALUES (?, ?, ?, ?, ?)",
                 (now_s, len(candidates), counts.get("ok", 0),
@@ -303,20 +296,7 @@ def _apply_record(con, rec: dict, now_s: str) -> bool:
         fields["status_changed"] = now_s  # also restarts the re-check timer of excluded listings
     sets = ", ".join(f"{k} = ?" for k in fields)
     con.execute(f"UPDATE listings SET {sets} WHERE symbol = ?", [*fields.values(), symbol])
-    if new_status != "active":
-        return False
-
-    annual: dict[str, dict] = {}
-    for period, item, end, value in rec.get("series") or []:
-        if period == "A" and item in ("revenue", "net_income"):
-            annual.setdefault(end[:10], {})[item] = value
-    for end, values in annual.items():
-        con.execute(
-            "INSERT INTO annual_figures (symbol, fy_end, revenue, net_income, source) VALUES (?, ?, ?, ?, 'yahoo') "
-            "ON CONFLICT (symbol, fy_end) DO UPDATE SET revenue = COALESCE(excluded.revenue, revenue), "
-            "net_income = COALESCE(excluded.net_income, net_income), source = 'yahoo'",
-            (symbol, end, values.get("revenue"), values.get("net_income")))
-    return True
+    return new_status == "active"
 
 
 def _store_metrics(con, rec: dict, rates: dict, today: dt.date) -> int:
@@ -324,13 +304,7 @@ def _store_metrics(con, rec: dict, rates: dict, today: dt.date) -> int:
     symbol = rec["symbol"]
     profile = rec.get("profile") or {}
     stats = rec.get("stats") or {}
-    # Annual revenue / net income come from the database (Yahoo's 4 years + older years
-    # kept from earlier runs); everything else from the current fetch.
-    rows = [(p, i, e, v) for p, i, e, v in rec.get("series") or []
-            if not (p == "A" and i in ("revenue", "net_income"))]
-    for fy_end, revenue, net_income in con.execute(
-            "SELECT fy_end, revenue, net_income FROM annual_figures WHERE symbol = ?", (symbol,)):
-        rows += [("A", "revenue", fy_end, revenue), ("A", "net_income", fy_end, net_income)]
+    rows = [(period, item, end, value) for period, item, end, value in rec.get("series") or []]
     m = metrics.compute(metrics.statements_from_rows(rows), stats, today)
     trade_rate = fx.usd_rate(rates, profile.get("currency"))
     fin_rate = fx.usd_rate(rates, profile.get("financial_currency") or profile.get("currency"))
