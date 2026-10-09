@@ -25,7 +25,7 @@ It shows the metrics from the HelloStocks screener (revenue and earnings growth,
 | Free Cash Flow (TTM) | Operating cash flow − capital expenditure, last 12 months. |
 | PEG (5Y Exp) | P/E ÷ analysts' expected yearly EPS growth over the next 5 years. |
 
-The default strategy criteria are: revenue growth 1Y ≥ 5 %, earnings growth 4Y ≥ 30 %, revenue growth 4Y ≥ 30 %, ROE ≥ 15 %, debt/equity ≤ 1, FCF > 0 and 0 < PEG ≤ 2. Open **Show Strategy Criteria** to change thresholds or switch criteria off. Your settings are saved in your browser.
+The default strategy criteria are: revenue growth 1Y ≥ 5 %, earnings growth 4Y ≥ 30 %, revenue growth 4Y ≥ 30 %, ROE ≥ 15 %, debt/equity ≤ 1, FCF > 0 and 0 < PEG ≤ 2. A missing value counts as a fail, except for PEG: stocks without analysts' growth forecasts (common in Europe) are scored on the other six criteria, shown e.g. as 6/6. Open **Show Strategy Criteria** to change thresholds or switch criteria off. Your settings are saved in your browser.
 
 Other features:
 * tabs for All / US / EU / Czech

@@ -10,7 +10,8 @@ const DEFAULT_CRITERIA = [
   { id: "roe", label: "Return on equity",         op: "≥", value: 15, unit: "%" },
   { id: "de",  label: "Debt to equity",           op: "≤", value: 1,  unit: "×" },
   { id: "fcf", label: "Free cash flow (TTM)",     op: ">", value: 0,  unit: "$M" },
-  { id: "peg", label: "PEG (5Y expected)",        op: "≤", value: 2,  unit: "×" },
+  // optional: a stock with no value (no analyst forecast) is scored without this criterion
+  { id: "peg", label: "PEG (5Y expected)",        op: "≤", value: 2,  unit: "×", optional: true },
 ];
 
 const PASS = {
@@ -22,6 +23,9 @@ const PASS = {
   fcf: (r, t) => r.fcfu != null ? r.fcfu > t * 1e6 : (t === 0 && r.fcf != null && r.fcf > 0),
   peg: (r, t) => r.peg != null && r.peg > 0 && r.peg <= t,
 };
+
+// Value a criterion looks at; an optional criterion is skipped when it is missing.
+const VALUE = { g1: "g1", e4: "e4", g4: "g4", roe: "roe", de: "de", fcf: "fcf", peg: "peg" };
 
 const BASIS_NOTE = {
   ttm: "Last 12 months vs the 12 months before",
@@ -41,7 +45,7 @@ const COLUMNS = [
   { key: "n",   label: "Company", left: true, sort: (r) => (r.n || "").toLowerCase() },
   { key: "sec", label: "Sector",  left: true, sort: (r) => r.sec || "" },
   { key: "mc",  label: "Market Cap", sort: (r) => r.mc },
-  { key: "crit", label: "Criteria", sort: (r) => r._pass + (r.mc || 0) / 1e16 },
+  { key: "crit", label: "Criteria", sort: (r) => (r._total ? r._pass / r._total : 0) + r._pass / 1e3 + (r.mc || 0) / 1e17 },
   { key: "g1",  label: "Revenue Growth (1Y, TTM)", crit: "g1", sort: (r) => r.g1 },
   { key: "e4",  label: "Earnings Growth (4Y)", crit: "e4", sort: (r) => r.e4 },
   { key: "g4",  label: "Revenue Growth (4Y)", crit: "g4", sort: (r) => r.g4 },
@@ -175,30 +179,37 @@ async function loadData() {
 
 function scoreRows() {
   const active = state.criteria.filter((c) => c.enabled);
-  state.activeCount = active.length;
   for (const r of state.rows) {
-    let n = 0;
+    let n = 0, total = 0;
     const res = {};
     for (const c of active) {
+      if (c.optional && r[VALUE[c.id]] == null) continue; // not counted either way
       const ok = PASS[c.id](r, c.value);
       res[c.id] = ok;
+      total++;
       if (ok) n++;
     }
     r._res = res;
     r._pass = n;
+    r._total = total;
   }
+}
+
+// Criteria still missing for a row to be shown with the current "Criteria met" filter.
+function meetsCriteriaFilter(r) {
+  if (state.critFilter === "0") return true;
+  const allowedMisses = state.critFilter === "all" ? 0 : -Number(state.critFilter);
+  return r._total - r._pass <= allowedMisses;
 }
 
 function applyFilters() {
   const q = state.search.trim().toLowerCase();
-  const need = state.critFilter === "all" ? state.activeCount
-    : state.critFilter === "0" ? 0 : Math.max(0, state.activeCount + Number(state.critFilter));
   const base = state.rows.filter((r) =>
     (!state.sector || r.sec === state.sector) &&
     (!state.country || r.c === state.country) &&
     (!state.minCap || (r.mc != null && r.mc >= state.minCap)) &&
     (!q || r._search.includes(q)) &&
-    r._pass >= need);
+    meetsCriteriaFilter(r));
 
   // Tab counts reflect all other filters.
   const counts = { ALL: base.length, US: 0, EU: 0, CZ: 0 };
@@ -258,7 +269,7 @@ function renderBody() {
   const html = pageRows.map((r) => {
     const mc = fromUsd(r.mc, r.cur);
     const fcf = fcfDisplay(r);
-    const total = state.activeCount;
+    const total = r._total;
     const badge = total === 0 ? "low" : r._pass === total ? "full" : r._pass >= total - 1 ? "near" : "low";
     const basisApprox = r.g1b && r.g1b !== "ttm" && r.g1b !== "fy";
     const g1Title = r.g1b ? ` title="${esc(BASIS_NOTE[r.g1b] || "")}"` : "";
@@ -275,7 +286,7 @@ function renderBody() {
       <td class="${r.roe == null ? "na" : cellClass(r, "roe")}">${pctFmt(r.roe)}</td>
       <td class="${r.de == null ? "na" : cellClass(r, "de")}">${numFmt(r.de)}</td>
       <td class="${fcf.value == null ? "na" : cellClass(r, "fcf")}">${moneyFmt(fcf.value, fcf.currency)}</td>
-      <td class="${r.peg == null ? "na" : cellClass(r, "peg")}">${numFmt(r.peg)}</td>
+      <td class="${r.peg == null ? "na" : cellClass(r, "peg")}"${r.peg == null ? ' title="No analyst growth forecast - PEG is left out of this stock\'s score"' : ""}>${numFmt(r.peg)}</td>
       <td class="${r.pe == null ? "na" : ""}">${numFmt(r.pe, 1)}</td>
     </tr>`;
   }).join("");
@@ -380,7 +391,7 @@ function downloadView() {
   const pct = (v) => (v == null ? "" : (v * 100).toFixed(2));
   const lines = [head];
   for (const r of state.filtered) {
-    lines.push([r.s, r.n, r.m, r.x, r.c, r.sec, r.ind, r.mc, `${r._pass}/${state.activeCount}`, pct(r.g1), pct(r.e4),
+    lines.push([r.s, r.n, r.m, r.x, r.c, r.sec, r.ind, r.mc, `${r._pass}/${r._total}`, pct(r.g1), pct(r.e4),
       pct(r.g4), pct(r.roe), r.de, r.fcfu, r.peg, r.pe]);
   }
   const csv = lines.map((l) => l.map((v) => {
