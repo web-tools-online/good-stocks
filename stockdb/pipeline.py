@@ -305,20 +305,27 @@ def _store_metrics(con, rec: dict, rates: dict, today: dt.date) -> int:
     profile = rec.get("profile") or {}
     stats = rec.get("stats") or {}
     rows = [(period, item, end, value) for period, item, end, value in rec.get("series") or []]
-    m = metrics.compute(metrics.statements_from_rows(rows), stats, today)
-    trade_rate = fx.usd_rate(rates, profile.get("currency"))
-    fin_rate = fx.usd_rate(rates, profile.get("financial_currency") or profile.get("currency"))
+    trade_currency = profile.get("currency")
+    fin_currency = profile.get("financial_currency") or trade_currency
+    trade_rate = fx.usd_rate(rates, trade_currency)
+    fin_rate = fx.usd_rate(rates, fin_currency)
     mcap = stats.get("market_cap")
     if mcap is None and stats.get("price") and stats.get("shares_outstanding"):
         mcap = stats["price"] * stats["shares_outstanding"]
+    # Market cap in the currency of the financial statements, to compare with company totals.
+    if mcap is None:
+        mcap_fin = None
+    elif fin_currency == trade_currency:
+        mcap_fin = mcap
+    else:
+        mcap_fin = mcap * trade_rate / fin_rate if trade_rate and fin_rate else None
+    m = metrics.compute(metrics.statements_from_rows(rows), stats, today, market_cap_fin=mcap_fin)
     db.upsert(con, "metrics", {
         "symbol": symbol,
         "as_of": rec["fetched_at"][:10],
         "price": stats.get("price"),
         "market_cap": mcap,
         "market_cap_usd": mcap * trade_rate if mcap is not None and trade_rate else None,
-        "pe_ttm": stats.get("pe_ttm"),
-        "dividend_yield": stats.get("dividend_yield"),
         "avg_volume": stats.get("avg_volume"),
         **m,
         "fcf_ttm_usd": m["fcf_ttm"] * fin_rate if m["fcf_ttm"] is not None and fin_rate else None,

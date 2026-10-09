@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      SYMBOLS: ${{ github.event.inputs.symbols || 'KNSL WT EVTC NIC ABCB BRC MWA BOTJ PKE KELYA FCCO GNTX CNP TSBK MGEE MGA BBAR SLF ELPC BMY HASI CBL SELF BGR GLPI BBDC TCG.MI CLIQ.DE BURE.ST MMGR-B.ST SES.MI OBS.VI VOX.WA MAERSK-B.CO DURC-B.ST 3ITN.DE REC.MI ETTE.HE FAA.VI NREST.ST ZV.MI BG.VI BBVA.MC CEDER.ST TELL.AT ACE.MI SCYR.MC UNITED.HE TSM1T.TL AYV.PA LOIHDE.HE CAI.MI KGH.PR NOKIA.PR RWE.PR RBI.PR ANDR.PR SHELL.PR MOL.PR OMV.PR PKN.PR TABAK.PR' }}
+      SYMBOLS: ${{ github.event.inputs.symbols || 'GMEX CYNCA.ST LARK.ST AAPL CEZ.PR' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -32,4 +32,4 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - name: Raw Yahoo Finance data
-        run: python -m stockdb inspect --compact $SYMBOLS
+        run: python -m stockdb inspect $SYMBOLS

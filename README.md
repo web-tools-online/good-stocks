@@ -24,6 +24,15 @@ It shows the metrics from the HelloStocks screener (revenue and earnings growth,
 | Debt to Equity | Total debt ÷ shareholders' equity (most recent quarter). |
 | Free Cash Flow (TTM) | Operating cash flow − capital expenditure, last 12 months. |
 | PEG (5Y Exp) | P/E ÷ analysts' expected yearly EPS growth over the next 5 years. |
+| P/E (TTM) | Share price ÷ earnings per share of the last 12 months. |
+| Dividend Yield | Expected dividends over the next 12 months ÷ share price. |
+
+**Data checks:** Yahoo's per-share figures (dividend per share, EPS) are occasionally broken, usually right after a reverse split. For example, GMEX showed a $453.60 dividend on a $1.94 share, and a P/E of 0.0007 despite a net loss. They are checked against company totals from the financial statements:
+* A dividend larger than the share price is hidden.
+* A yield of 15 % or more must be confirmed by the dividends actually paid. Otherwise the paid amount ÷ market cap is shown, marked `*`.
+* A P/E of a loss-making company, or one more than 10× off market cap ÷ net income, is hidden.
+
+Ordinary values are left as Yahoo reports them. On a sample of 62 dividend payers none of them changed. Run **Actions → "Inspect tickers"** to see the raw Yahoo data behind any ticker.
 
 The default strategy criteria are: revenue growth 1Y ≥ 5 %, earnings growth 4Y ≥ 30 %, revenue growth 4Y ≥ 30 %, ROE ≥ 15 %, debt/equity ≤ 1, FCF > 0 and 0 < PEG ≤ 2. A missing value counts as a fail, except for PEG: stocks without analysts' growth forecasts (common in Europe) are scored on the other six criteria, shown e.g. as 6/6. Open **Show Strategy Criteria** to change thresholds or switch criteria off. Your settings are saved in your browser.
 

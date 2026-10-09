@@ -60,11 +60,12 @@ def workdir(tmp_path, monkeypatch):
         {"symbol": "01P.DE", "market": "EU", "name": "Medpace Holdings Inc", "exchange": "GER"},
         {"symbol": "CTPNV.PR", "market": "CZ", "name": "CTP N.V.", "exchange": "PRA"},
         {"symbol": "EMPTY.PR", "market": "CZ", "name": "Empty shell", "exchange": "PRA"},
+        {"symbol": "BROKE", "market": "US", "name": "Broken Per Share Inc", "exchange_name": "NASDAQ"},
     ]
     for i, l in enumerate(listings):
         l.update(skip=False, shard=i % 2)
     universe = {"generated": "2026-10-10T03:00:00Z", "limit": 0, "shards": 2,
-                "market_counts": {"US": 3, "EU": 5, "CZ": 3}, "listings": listings}
+                "market_counts": {"US": 4, "EU": 5, "CZ": 3}, "listings": listings}
     (tmp_path / "universe.json").write_text(json.dumps(universe))
     records = [
         _record("GOOD", "US", "Good Corp", "United States", exchange="NMS"),
@@ -83,6 +84,9 @@ def workdir(tmp_path, monkeypatch):
         _record("EMPTY.PR", "CZ", "Empty shell", None, currency="CZK", exchange="PRA", series=[],
                 stats={"market_cap": None, "roe": None, "debt_to_equity_pct": None, "revenue_growth_q": None,
                        "peg_5y": None}),
+        _record("BROKE", "US", "Broken Per Share Inc", "Australia", exchange="NCM",
+                series=_series([100, 110, 130, 150], [10, 12, 15, -20]) + [["T", "net_income", "2026-06-30", -8e6]],
+                stats={"dividend_yield": 232.6, "pe_ttm": 0.0007, "peg_5y": 0.5, "market_cap": 1.46e6}),
     ]
     raw = tmp_path / "raw"
     raw.mkdir()
@@ -97,7 +101,7 @@ def test_build_and_export(workdir):
     db_path = workdir / "stocks.db"
     summary = pipeline.run_build(str(db_path), str(workdir / "universe.json"),
                                  [str(workdir / "raw" / "*.jsonl.gz")])
-    assert summary["ok"] == 10 and summary["error"] == 1
+    assert summary["ok"] == 11 and summary["error"] == 1
 
     con = sqlite3.connect(db_path)
     con.row_factory = sqlite3.Row
@@ -111,7 +115,11 @@ def test_build_and_export(workdir):
     assert status["01P.DE"] == ("excluded", "company probably based outside the EU (reports in USD)")
 
     m = {r["symbol"]: dict(r) for r in con.execute("SELECT * FROM metrics")}
-    assert set(m) == {"GOOD", "SAP.DE", "AIR.PA", "CEZ.PR", "CTPNV.PR", "EMPTY.PR"}
+    assert set(m) == {"GOOD", "SAP.DE", "AIR.PA", "CEZ.PR", "CTPNV.PR", "EMPTY.PR", "BROKE"}
+    broke = m["BROKE"]
+    assert (broke["dividend_yield"], broke["dividend_basis"]) == (None, "invalid")
+    assert (broke["pe_ttm"], broke["pe_basis"], broke["peg_5y"]) == (None, "loss", None)
+    assert (m["GOOD"]["pe_ttm"], m["GOOD"]["pe_basis"]) == (20.0, "yahoo")
     assert m["CTPNV.PR"]["market_cap_usd"] == pytest.approx(18.0 * 4.5e8 * 1.1)
     good = m["GOOD"]
     assert good["rev_growth_4y"] == pytest.approx(0.5)  # 150 vs 100, FY2025 vs FY2022
@@ -127,7 +135,7 @@ def test_build_and_export(workdir):
     out = workdir / "site_out"
     summary_path = workdir / "summary.json"
     res = export.run_export(str(db_path), str(ROOT / "site"), str(out), str(summary_path))
-    assert res["by_market"] == {"US": 1, "EU": 2, "CZ": 2}  # EMPTY.PR has no data -> not exported
+    assert res["by_market"] == {"US": 2, "EU": 2, "CZ": 2}  # EMPTY.PR has no data -> not exported
     data = json.loads((out / "data" / "stocks.json").read_text())
     rows = [dict(zip(data["fields"], r)) for r in data["rows"]]
     assert rows[0]["s"] == "CEZ.PR"  # sorted by market cap (USD)
@@ -135,8 +143,10 @@ def test_build_and_export(workdir):
     assert (out / "index.html").exists() and (out / "app.js").exists()
     csv_lines = (out / "data" / "stocks.csv").read_text().splitlines()
     assert csv_lines[0].startswith("Ticker,Company,Market")
-    assert len(csv_lines) == 6
-    assert json.loads(summary_path.read_text())["stocks"] == 5
+    assert len(csv_lines) == 7
+    assert json.loads(summary_path.read_text())["stocks"] == 6
+    broke_row = next(r for r in rows if r["s"] == "BROKE")
+    assert broke_row["dy"] is None and broke_row["dyb"] == "invalid" and broke_row["peb"] == "loss"
 
 
 def test_report(workdir, capsys):

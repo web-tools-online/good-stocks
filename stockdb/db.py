@@ -37,8 +37,10 @@ CREATE TABLE IF NOT EXISTS metrics (
     price                REAL,
     market_cap           REAL,              -- trading currency
     market_cap_usd       REAL,
-    pe_ttm               REAL,
-    dividend_yield       REAL,
+    pe_ttm               REAL,              -- checked against market cap / net income
+    pe_basis             TEXT,              -- yahoo | statements | loss
+    dividend_yield       REAL,              -- checked against dividends actually paid
+    dividend_basis       TEXT,              -- yahoo | cash
     avg_volume           REAL,
     revenue_ttm          REAL,
     net_income_ttm       REAL,
@@ -84,7 +86,20 @@ def connect(path: str | Path) -> sqlite3.Connection:
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys = OFF")
     con.executescript(SCHEMA)
+    _add_missing_columns(con)
     return con
+
+
+def _add_missing_columns(con: sqlite3.Connection) -> None:
+    """Bring a database created by an older version up to date (new columns only)."""
+    ref = sqlite3.connect(":memory:")
+    ref.executescript(SCHEMA)
+    for (table,) in ref.execute("SELECT name FROM sqlite_master WHERE type = 'table'"):
+        have = {r[1] for r in con.execute(f"PRAGMA table_info({table})")}
+        for _cid, name, col_type, *_ in ref.execute(f"PRAGMA table_info({table})"):
+            if name not in have:
+                con.execute(f"ALTER TABLE {table} ADD COLUMN {name} {col_type}")
+    ref.close()
 
 
 def upsert(con: sqlite3.Connection, table: str, row: dict, key: str | tuple = "symbol") -> None:

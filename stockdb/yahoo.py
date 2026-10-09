@@ -35,15 +35,18 @@ TIMESERIES_ITEMS = {
     "CapitalExpenditure": "capex",
     "StockholdersEquity": "equity",
     "TotalDebt": "total_debt",
+    "CashDividendsPaid": "dividends_paid",
+    "CommonStockDividendPaid": "dividends_paid_common",
 }
 TIMESERIES_REQUEST = {
     # prefix -> (period code stored in the DB, keys)
     "annual": ("A", ["TotalRevenue", "NetIncome", "NetIncomeCommonStockholders", "DilutedEPS",
                      "FreeCashFlow", "OperatingCashFlow", "CapitalExpenditure",
-                     "StockholdersEquity", "TotalDebt"]),
+                     "StockholdersEquity", "TotalDebt", "CashDividendsPaid", "CommonStockDividendPaid"]),
     "quarterly": ("Q", ["TotalRevenue", "NetIncome", "StockholdersEquity", "TotalDebt"]),
     "trailing": ("T", ["TotalRevenue", "NetIncome", "NetIncomeCommonStockholders",
-                       "FreeCashFlow", "OperatingCashFlow", "CapitalExpenditure"]),
+                       "FreeCashFlow", "OperatingCashFlow", "CapitalExpenditure",
+                       "CashDividendsPaid", "CommonStockDividendPaid"]),
 }
 PEG_KEY = "trailingPegRatio"
 
@@ -108,6 +111,9 @@ def parse_quote_summary(payload: dict) -> tuple[dict, dict]:
         "market_cap": _num(price.get("marketCap")) or _num(detail.get("marketCap")),
         "pe_ttm": _num(detail.get("trailingPE")),
         "dividend_yield": _num(detail.get("dividendYield")),
+        "trailing_dividend_yield": _num(detail.get("trailingAnnualDividendYield")),
+        "last_split_date": _num(keystats.get("lastSplitDate")),
+        "last_split_factor": _str(keystats.get("lastSplitFactor")),
         "avg_volume": _num(detail.get("averageVolume")),
         "roe": _num(fin.get("returnOnEquity")),
         "debt_to_equity_pct": _num(fin.get("debtToEquity")),

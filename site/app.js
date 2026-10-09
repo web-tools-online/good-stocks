@@ -54,6 +54,7 @@ const COLUMNS = [
   { key: "fcf", label: "Free Cash Flow (TTM)", crit: "fcf", sort: (r) => r.fcfu },
   { key: "peg", label: "PEG (5Y Exp)", crit: "peg", sort: (r) => r.peg },
   { key: "pe",  label: "P/E (TTM)", sort: (r) => r.pe },
+  { key: "dy",  label: "Dividend Yield", sort: (r) => r.dy },
 ];
 
 /* ----------------------------------------------------------------------------
@@ -183,7 +184,7 @@ function scoreRows() {
     let n = 0, total = 0;
     const res = {};
     for (const c of active) {
-      if (c.optional && r[VALUE[c.id]] == null) continue; // not counted either way
+      if (c.optional && r[VALUE[c.id]] == null && !PE_UNUSABLE[r.peb]) continue; // not counted either way
       const ok = PASS[c.id](r, c.value);
       res[c.id] = ok;
       total++;
@@ -263,6 +264,24 @@ function growthCell(r, key, critId) {
   return `<td class="${cellClass(r, critId)}">${pctFmt(v)}</td>`;
 }
 
+// Why a P/E is missing when Yahoo had one (see stockdb/metrics.py: price_earnings).
+const PE_UNUSABLE = {
+  loss: "the company made a loss over the last 12 months",
+  conflict: "Yahoo's P/E does not match market cap ÷ net income (a data error), so it is hidden",
+};
+
+function dividendCell(r) {
+  if (r.dy == null) {
+    const why = r.dyb === "invalid" ? ' title="Hidden: Yahoo\'s dividend figure is larger than the share price (a data error)"' : "";
+    return `<td class="na"${why}>—</td>`;
+  }
+  const text = r.dy === 0 ? "0%" : (r.dy * 100).toFixed(2) + "%";
+  if (r.dyb === "cash") {
+    return `<td title="Dividends actually paid over the last 12 months ÷ market cap. Yahoo's per-share figure was not confirmed by them.">${text}<span class="approx">*</span></td>`;
+  }
+  return `<td>${text}</td>`;
+}
+
 function renderBody() {
   const start = state.page * state.pageSize;
   const pageRows = state.filtered.slice(start, start + state.pageSize);
@@ -286,8 +305,9 @@ function renderBody() {
       <td class="${r.roe == null ? "na" : cellClass(r, "roe")}">${pctFmt(r.roe)}</td>
       <td class="${r.de == null ? "na" : cellClass(r, "de")}">${numFmt(r.de)}</td>
       <td class="${fcf.value == null ? "na" : cellClass(r, "fcf")}">${moneyFmt(fcf.value, fcf.currency)}</td>
-      <td class="${r.peg == null ? "na" : cellClass(r, "peg")}"${r.peg == null ? ' title="No analyst growth forecast - PEG is left out of this stock\'s score"' : ""}>${numFmt(r.peg)}</td>
-      <td class="${r.pe == null ? "na" : ""}">${numFmt(r.pe, 1)}</td>
+      <td class="${r.peg == null ? (PE_UNUSABLE[r.peb] ? cellClass(r, "peg") : "na") : cellClass(r, "peg")}"${r.peg == null ? ` title="${esc(PE_UNUSABLE[r.peb] ? "No PEG: " + PE_UNUSABLE[r.peb] : "No analyst growth forecast - PEG is left out of this stock's score")}"` : ""}>${numFmt(r.peg)}</td>
+      <td class="${r.pe == null ? "na" : ""}"${r.pe == null && PE_UNUSABLE[r.peb] ? ` title="${esc(PE_UNUSABLE[r.peb])}"` : ""}>${numFmt(r.pe, 1)}</td>
+      ${dividendCell(r)}
     </tr>`;
   }).join("");
   $("grid-body").innerHTML = html;
@@ -387,12 +407,12 @@ function syncControls() {
 function downloadView() {
   const head = ["Ticker", "Company", "Market", "Exchange", "Country", "Sector", "Industry", "Market Cap (USD)",
     "Criteria met", "Revenue Growth 1Y %", "Earnings Growth 4Y %", "Revenue Growth 4Y %", "ROE %",
-    "Debt to Equity", "Free Cash Flow TTM (USD)", "PEG 5Y", "P/E TTM"];
+    "Debt to Equity", "Free Cash Flow TTM (USD)", "PEG 5Y", "P/E TTM", "Dividend Yield %"];
   const pct = (v) => (v == null ? "" : (v * 100).toFixed(2));
   const lines = [head];
   for (const r of state.filtered) {
     lines.push([r.s, r.n, r.m, r.x, r.c, r.sec, r.ind, r.mc, `${r._pass}/${r._total}`, pct(r.g1), pct(r.e4),
-      pct(r.g4), pct(r.roe), r.de, r.fcfu, r.peg, r.pe]);
+      pct(r.g4), pct(r.roe), r.de, r.fcfu, r.peg, r.pe, pct(r.dy)]);
   }
   const csv = lines.map((l) => l.map((v) => {
     const s = v == null ? "" : String(v);
