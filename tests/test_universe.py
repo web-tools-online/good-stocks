@@ -37,3 +37,36 @@ def test_sample_per_exchange():
     rows = [{"symbol": f"{x}{i}", "exchange": x} for x in "ABC" for i in range(5)]
     sample = _sample_per_exchange(rows, 4)
     assert [r["symbol"] for r in sample] == ["A0", "B0", "C0", "A1"]
+
+
+class FakeClient:
+    def __init__(self, quotes):
+        self.quotes = quotes
+
+    def screen_exchange(self, code, region):
+        return self.quotes
+
+
+def test_screener_listings_skip_isin_symbols_and_non_equities():
+    from stockdb.universe import screener_listings
+
+    quotes = [
+        {"symbol": "CEZ.PR", "quoteType": "EQUITY", "longName": "CEZ, a. s.", "fullExchangeName": "Prague"},
+        {"symbol": "CZ0003527690.PR", "quoteType": "EQUITY", "longName": "J&T FINANCE GROUP"},
+        {"symbol": "XYZ.PR", "quoteType": "ETF"},
+    ]
+    rows = screener_listings(FakeClient(quotes), "CZ", {"CZ": ["PRA"]})
+    assert [r["symbol"] for r in rows] == ["CEZ.PR"]
+
+
+def test_listing_status():
+    from stockdb.pipeline import listing_status
+
+    assert listing_status("EU", {"quote_type": "EQUITY", "country": "Germany"}) == ("active", None)
+    assert listing_status("EU", {"quote_type": "EQUITY", "country": "United States"})[0] == "excluded"
+    # no country in the profile: decide by reporting currency
+    assert listing_status("EU", {"quote_type": "EQUITY", "financial_currency": "USD"})[0] == "excluded"
+    assert listing_status("EU", {"quote_type": "EQUITY", "currency": "EUR"}) == ("active", None)
+    assert listing_status("US", {"quote_type": "EQUITY", "country": "China"}) == ("active", None)
+    assert listing_status("CZ", {"quote_type": "EQUITY", "country": "Austria"}) == ("active", None)
+    assert listing_status("US", {"quote_type": "ETF"})[0] == "excluded"

@@ -17,6 +17,8 @@ _EXCLUDE_NAME = re.compile(
     re.IGNORECASE,
 )
 _SYMBOL_OK = re.compile(r"^[A-Z0-9]+(\.[A-Z])?$")
+# Bonds and certificates show up on some exchanges under their ISIN, e.g. CZ0003527690.PR
+_ISIN_LIKE = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
 
 
 def to_yahoo_symbol(symbol: str) -> str:
@@ -103,6 +105,8 @@ def screener_listings(client, market: str, exchanges: dict[str, list[str]],
             for q in quotes:
                 symbol = q.get("symbol")
                 if not symbol or symbol in seen or q.get("quoteType", "EQUITY") != "EQUITY":
+                    continue
+                if _ISIN_LIKE.match(symbol.split(".")[0]):
                     continue
                 traded = q.get("regularMarketTime")
                 if isinstance(traded, (int, float)) and traded < cutoff:

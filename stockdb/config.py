@@ -52,6 +52,10 @@ EU_COUNTRIES = {
     "Portugal", "Romania", "Slovakia", "Slovenia", "Spain", "Sweden",
 }
 
+# Currencies of EU member states; used to spot foreign companies whose Yahoo profile
+# has no country (e.g. US companies traded on Xetra report in USD).
+EU_CURRENCIES = {"EUR", "SEK", "DKK", "PLN", "HUF", "RON", "CZK", "BGN"}
+
 # Yahoo exchange code -> country name, used to pick the home listing of a company that
 # is listed on several EU exchanges.
 EXCHANGE_COUNTRY = {

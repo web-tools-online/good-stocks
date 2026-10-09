@@ -115,6 +115,7 @@ def parse_quote_summary(payload: dict) -> tuple[dict, dict]:
         "revenue_growth_q": _num(fin.get("revenueGrowth")),
         "earnings_growth_q": _num(fin.get("earningsGrowth")),
         "peg_ratio": _num(keystats.get("pegRatio")),
+        "shares_outstanding": _num(keystats.get("sharesOutstanding")) or _num(keystats.get("impliedSharesOutstanding")),
         "market_time": _num(price.get("regularMarketTime")),
     }
     return profile, stats

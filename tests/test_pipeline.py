@@ -57,11 +57,14 @@ def workdir(tmp_path, monkeypatch):
         {"symbol": "AIR.DE", "market": "EU", "name": "Airbus SE", "exchange": "GER"},
         {"symbol": "APC.DE", "market": "EU", "name": "Apple Inc.", "exchange": "GER"},
         {"symbol": "CEZ.PR", "market": "CZ", "name": "CEZ", "exchange": "PRA"},
+        {"symbol": "01P.DE", "market": "EU", "name": "Medpace Holdings Inc", "exchange": "GER"},
+        {"symbol": "CTPNV.PR", "market": "CZ", "name": "CTP N.V.", "exchange": "PRA"},
+        {"symbol": "EMPTY.PR", "market": "CZ", "name": "Empty shell", "exchange": "PRA"},
     ]
     for i, l in enumerate(listings):
         l.update(skip=False, shard=i % 2)
     universe = {"generated": "2026-10-10T03:00:00Z", "limit": 0, "shards": 2,
-                "market_counts": {"US": 3, "EU": 4, "CZ": 1}, "listings": listings}
+                "market_counts": {"US": 3, "EU": 5, "CZ": 3}, "listings": listings}
     (tmp_path / "universe.json").write_text(json.dumps(universe))
     records = [
         _record("GOOD", "US", "Good Corp", "United States", exchange="NMS"),
@@ -74,6 +77,12 @@ def workdir(tmp_path, monkeypatch):
         _record("APC.DE", "EU", "Apple Inc.", "United States", currency="EUR", exchange="GER", series=[]),
         _record("CEZ.PR", "CZ", "CEZ, a. s.", "Czech Republic", currency="CZK", exchange="PRA",
                 stats={"market_cap": 6e12}),
+        _record("01P.DE", "EU", "Medpace Holdings Inc", None, currency="USD", exchange="GER"),
+        _record("CTPNV.PR", "CZ", "CTP N.V.", "Netherlands", currency="EUR", exchange="PRA",
+                stats={"market_cap": None, "price": 18.0, "shares_outstanding": 4.5e8}),
+        _record("EMPTY.PR", "CZ", "Empty shell", None, currency="CZK", exchange="PRA", series=[],
+                stats={"market_cap": None, "roe": None, "debt_to_equity_pct": None, "revenue_growth_q": None,
+                       "peg_5y": None}),
     ]
     raw = tmp_path / "raw"
     raw.mkdir()
@@ -88,7 +97,7 @@ def test_build_and_export(workdir):
     db_path = workdir / "stocks.db"
     summary = pipeline.run_build(str(db_path), str(workdir / "universe.json"),
                                  [str(workdir / "raw" / "*.jsonl.gz")], use_sec=False)
-    assert summary["ok"] == 7 and summary["error"] == 1
+    assert summary["ok"] == 10 and summary["error"] == 1
 
     con = sqlite3.connect(db_path)
     con.row_factory = sqlite3.Row
@@ -99,9 +108,11 @@ def test_build_and_export(workdir):
     assert status["AIR.PA"][0] == "active"  # home exchange wins over higher volume
     assert status["AIR.DE"] == ("duplicate", "same company as AIR.PA")
     assert status["FAIL"][0] == "active"
+    assert status["01P.DE"] == ("excluded", "company probably based outside the EU (reports in USD)")
 
     m = {r["symbol"]: dict(r) for r in con.execute("SELECT * FROM metrics")}
-    assert set(m) == {"GOOD", "SAP.DE", "AIR.PA", "CEZ.PR"}
+    assert set(m) == {"GOOD", "SAP.DE", "AIR.PA", "CEZ.PR", "CTPNV.PR", "EMPTY.PR"}
+    assert m["CTPNV.PR"]["market_cap_usd"] == pytest.approx(18.0 * 4.5e8 * 1.1)
     good = m["GOOD"]
     assert good["rev_growth_5y_years"] == 3
     assert good["rev_growth_5y"] == pytest.approx(1.5 ** (5 / 3) - 1)
@@ -109,14 +120,14 @@ def test_build_and_export(workdir):
     assert good["fcf_ttm"] == pytest.approx(18)
     assert m["CEZ.PR"]["market_cap_usd"] == pytest.approx(6e12 * 0.045)
     assert m["SAP.DE"]["fcf_ttm_usd"] == pytest.approx(18 * 1.1)
-    assert con.execute("SELECT COUNT(*) FROM history").fetchone()[0] == 4
+    assert con.execute("SELECT COUNT(*) FROM history").fetchone()[0] == 6
     con.close()
 
     # Second week: universe re-run skips excluded/duplicate listings.
     out = workdir / "site_out"
     summary_path = workdir / "summary.json"
     res = export.run_export(str(db_path), str(ROOT / "site"), str(out), str(summary_path))
-    assert res["by_market"] == {"US": 1, "EU": 2, "CZ": 1}
+    assert res["by_market"] == {"US": 1, "EU": 2, "CZ": 2}  # EMPTY.PR has no data -> not exported
     data = json.loads((out / "data" / "stocks.json").read_text())
     rows = [dict(zip(data["fields"], r)) for r in data["rows"]]
     assert rows[0]["s"] == "CEZ.PR"  # sorted by market cap (USD)
@@ -124,8 +135,8 @@ def test_build_and_export(workdir):
     assert (out / "index.html").exists() and (out / "app.js").exists()
     csv_lines = (out / "data" / "stocks.csv").read_text().splitlines()
     assert csv_lines[0].startswith("Ticker,Company,Market")
-    assert len(csv_lines) == 5
-    assert json.loads(summary_path.read_text())["stocks"] == 4
+    assert len(csv_lines) == 6
+    assert json.loads(summary_path.read_text())["stocks"] == 5
 
 
 def test_report(workdir, capsys):

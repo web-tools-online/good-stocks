@@ -65,7 +65,9 @@ def _round(value, digits):
 def query_rows(con, max_stale_days: int = config.MAX_STALE_DAYS) -> list[list]:
     cutoff = (dt.date.today() - dt.timedelta(days=max_stale_days)).isoformat()
     sql = (f"SELECT {', '.join(expr for _, expr, _ in FIELDS)} FROM listings l JOIN metrics m USING (symbol) "
-           "WHERE l.status = 'active' AND m.as_of >= ? ORDER BY m.market_cap_usd IS NULL, m.market_cap_usd DESC")
+           "WHERE l.status = 'active' AND m.as_of >= ? "
+           "AND COALESCE(m.market_cap_usd, m.revenue_ttm, m.rev_growth_1y, m.roe, m.fcf_ttm) IS NOT NULL "
+           "ORDER BY m.market_cap_usd IS NULL, m.market_cap_usd DESC")
     rows = []
     for r in con.execute(sql, (cutoff,)):
         rows.append([_round(v, digits) for v, (_, _, digits) in zip(r, FIELDS)])

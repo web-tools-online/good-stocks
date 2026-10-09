@@ -48,7 +48,11 @@ def _get_json(session, url: str):
                 return None
             if resp.status_code == 200:
                 return resp.json()
-            log.warning("SEC %s -> HTTP %s", url, resp.status_code)
+            body = " ".join(resp.text[:400].split())
+            log.warning("SEC %s -> HTTP %s (User-Agent %r): %s", url, resp.status_code,
+                        session.headers.get("User-Agent"), body[:200])
+            if resp.status_code == 403:
+                return None  # retrying does not help; see README (SEC_USER_AGENT)
         except Exception as exc:
             log.warning("SEC %s failed: %s", url, exc)
         time.sleep(2 * (attempt + 1))

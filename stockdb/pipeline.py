@@ -99,12 +99,22 @@ def fetch_one(client, listing: dict) -> dict:
     return rec
 
 
-def _is_eligible(market: str, profile: dict) -> bool:
+def listing_status(market: str, profile: dict) -> tuple[str, str | None]:
+    """``("active", None)`` or ``("excluded", reason)`` for a fetched profile."""
     if (profile.get("quote_type") or "EQUITY") != "EQUITY":
-        return False
-    if market == config.MARKET_EU and profile.get("country") and profile["country"] not in config.EU_COUNTRIES:
-        return False
-    return True
+        return "excluded", f"not a stock ({profile.get('quote_type')})"
+    if market == config.MARKET_EU:
+        country = profile.get("country")
+        if country and country not in config.EU_COUNTRIES:
+            return "excluded", f"company based outside the EU ({country})"
+        reporting = profile.get("financial_currency") or profile.get("currency")
+        if not country and reporting and reporting not in config.EU_CURRENCIES:
+            return "excluded", f"company probably based outside the EU (reports in {reporting})"
+    return "active", None
+
+
+def _is_eligible(market: str, profile: dict) -> bool:
+    return listing_status(market, profile)[0] == "active"
 
 
 def run_fetch(universe_path: str, shard: int, out_path: str, workers: int = 4,
@@ -270,12 +280,7 @@ def _apply_record(con, rec: dict, now_s: str) -> None:
 
     profile = rec.get("profile") or {}
     current = con.execute("SELECT status FROM listings WHERE symbol = ?", (symbol,)).fetchone()
-    if (profile.get("quote_type") or "EQUITY") != "EQUITY":
-        new_status, reason = "excluded", f"not a stock ({profile.get('quote_type')})"
-    elif rec["market"] == config.MARKET_EU and profile.get("country") and profile["country"] not in config.EU_COUNTRIES:
-        new_status, reason = "excluded", f"company based outside the EU ({profile['country']})"
-    else:
-        new_status, reason = "active", None
+    new_status, reason = listing_status(rec["market"], profile)
     changed = current is None or current["status"] != new_status
 
     fields = {k: profile.get(k) for k in ("sector", "industry", "country", "website", "currency",
@@ -366,6 +371,8 @@ def _recompute_metrics(con, rates: dict, today: dt.date, fetched_now: set[str]) 
         trade_rate = fx.usd_rate(rates, info["currency"])
         fin_rate = fx.usd_rate(rates, info["financial_currency"] or info["currency"])
         mcap = stats.get("market_cap")
+        if mcap is None and stats.get("price") and stats.get("shares_outstanding"):
+            mcap = stats["price"] * stats["shares_outstanding"]
         row = {
             "symbol": symbol,
             "as_of": info["fetched_at"][:10],
