@@ -1,0 +1,53 @@
+name: Deploy website
+
+# Rebuilds the website from the latest published database when only the site changes,
+# so a design change does not need a full (long) data refresh.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "stockdb/export.py"
+      - ".github/workflows/deploy-site.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Download the current database
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p work
+          gh release download data --pattern stocks.db --dir work --repo "$GITHUB_REPOSITORY" \
+            || echo "No database published yet - the site will show an empty table"
+      - name: Export the website
+        run: python -m stockdb export --db work/stocks.db --site site --out _site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
