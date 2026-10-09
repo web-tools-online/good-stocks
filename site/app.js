@@ -65,7 +65,7 @@ const state = {
   sector: "",
   country: "",
   minCap: 0,
-  critFilter: "all",
+  critFilter: "0", // "0" = any number of criteria met, "all" = every enabled criterion
   currency: "USD",
   sortKey: "crit",
   sortDir: -1,
@@ -339,7 +339,7 @@ function writeHash() {
   if (state.sector) p.set("sector", state.sector);
   if (state.country) p.set("country", state.country);
   if (state.minCap) p.set("cap", String(state.minCap));
-  if (state.critFilter !== "all") p.set("crit", state.critFilter);
+  if (state.critFilter !== "0") p.set("crit", state.critFilter);
   const h = p.toString();
   history.replaceState(null, "", h ? "#" + h : location.pathname + location.search);
 }
