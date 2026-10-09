@@ -138,7 +138,7 @@
           <h3>Metrics</h3>
           <dl>
             <dt>Revenue Growth (1Y, TTM)</dt><dd>Revenue over the last 12 months compared with the 12 months before. <span class="approx">*</span> marks an estimate: the latest quarter against the same quarter a year earlier.</dd>
-            <dt>Earnings / Revenue Growth (5Y)</dt><dd>Total change in net income or revenue between the latest fiscal year and the one five years earlier. Some companies have only 3–4 years of history so far. Their figure is marked <span class="approx">≈</span>: the yearly growth rate over those years, extended to five years.</dd>
+            <dt>Earnings / Revenue Growth (5Y)</dt><dd>Growth in net income or revenue over five years. Yahoo Finance's current statements cover the last four fiscal years. The figure is the yearly growth rate over those years, extended to five years.</dd>
             <dt>ROE</dt><dd>Net income (TTM) ÷ shareholders' equity.</dd>
             <dt>Debt to Equity</dt><dd>Total debt ÷ shareholders' equity (most recent quarter).</dd>
             <dt>Free Cash Flow (TTM)</dt><dd>Operating cash flow − capital expenditure, last 12 months.</dd>
@@ -147,7 +147,7 @@
         </div>
         <div>
           <h3>Data &amp; updates</h3>
-          <p>A GitHub Actions workflow runs every Saturday. It collects the ticker lists and pulls fundamentals from Yahoo Finance. For US companies it also reads older annual figures from SEC EDGAR. Everything goes into a SQLite database, which keeps the full history week after week. This page is then rebuilt from it.</p>
+          <p>A GitHub Actions workflow runs every Saturday. It collects the ticker lists, pulls the current fundamentals from Yahoo Finance and stores them in a SQLite database. Each run replaces the previous week's numbers. This page is then rebuilt from the database.</p>
           <p>You can <a href="#" id="db-link">download the database</a> and query it with any SQLite tool.</p>
           <p class="muted small">For information only, not investment advice. The data can be incomplete or wrong; always check a company's own filings.</p>
         </div>
@@ -156,7 +156,7 @@
   </main>
 
   <footer class="wrap footer muted small">
-    Data: Yahoo Finance, SEC EDGAR, Nasdaq Trader, ECB.
+    Data: Yahoo Finance, Nasdaq Trader, ECB.
     <a href="https://github.com/web-tools-online/good-stocks" id="repo-link">Source on GitHub</a>
   </footer>
 

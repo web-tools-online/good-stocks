@@ -13,7 +13,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from . import config, db, fx, metrics, sec
+from . import config, db, fx, metrics
 from .universe import build_universe
 
 log = logging.getLogger(__name__)
@@ -188,17 +188,14 @@ def _load_raw(patterns: list[str]) -> list[dict]:
     return list(records.values())
 
 
-def _monday(d: dt.date) -> str:
-    return (d - dt.timedelta(days=d.weekday())).isoformat()
-
-
 def normalize_name(name: str | None) -> str:
     name = (name or "").lower()
     name = re.sub(r"[^a-z0-9 ]+", " ", name)
     return re.sub(r"\s+", " ", name).strip()
 
 
-def run_build(db_path: str, universe_path: str, raw_patterns: list[str], use_sec: bool = True) -> dict:
+def run_build(db_path: str, universe_path: str, raw_patterns: list[str]) -> dict:
+    """Store the current snapshot: listings and their latest metrics (no history is kept)."""
     con = db.connect(db_path)
     universe = json.loads(Path(universe_path).read_text())
     now = _now()
@@ -231,27 +228,25 @@ def run_build(db_path: str, universe_path: str, raw_patterns: list[str], use_sec
                     con.execute("UPDATE listings SET status = 'delisted', status_reason = ?, status_changed = ? "
                                 "WHERE symbol = ?", ("no longer listed", now_s, symbol))
 
-    # 2. Raw fetch results ------------------------------------------------------------
+    # 2. Current exchange rates ---------------------------------------------------------
     records = _load_raw(raw_patterns)
+    currencies = {r[0] for r in con.execute(
+        "SELECT currency FROM listings UNION SELECT financial_currency FROM listings") if r[0]}
+    for rec in records:
+        profile = rec.get("profile") or {}
+        currencies.update(c for c in (profile.get("currency"), profile.get("financial_currency")) if c)
+    rates = _update_fx(con, currencies)
+
+    # 3. Fetch results -> listing profile + current metrics ---------------------------
     counts = {"ok": 0, "not_found": 0, "error": 0}
+    n_metrics = 0
     for rec in records:
         counts[rec["status"]] = counts.get(rec["status"], 0) + 1
-        _apply_record(con, rec, now_s)
+        n_metrics += _apply_record(con, rec, now_s, rates, today)
     log.info("applied %d fetch results: %s", len(records), counts)
 
-    # 3. FX rates ---------------------------------------------------------------------
-    rates = _update_fx(con, today)
-
-    # 4. Longer history for US companies from SEC EDGAR ------------------------------
-    if use_sec:
-        try:
-            _apply_sec(con, now_s)
-        except Exception as exc:  # optional data source
-            log.exception("SEC history failed: %s", exc)
-
-    # 5. Metrics, weekly history, EU de-duplication -----------------------------------
-    fetched_now = {r["symbol"] for r in records if r["status"] == "ok"}
-    n_metrics = _recompute_metrics(con, rates, today, fetched_now)
+    # Listings that failed this week keep last week's metrics (hidden after MAX_STALE_DAYS).
+    con.execute("DELETE FROM metrics WHERE symbol NOT IN (SELECT symbol FROM listings WHERE status = 'active')")
     _dedupe_eu(con, rates, now_s)
 
     con.execute("INSERT INTO runs (finished, universe_size, fetched_ok, fetched_failed, notes) VALUES (?, ?, ?, ?, ?)",
@@ -266,7 +261,8 @@ def run_build(db_path: str, universe_path: str, raw_patterns: list[str], use_sec
     return summary
 
 
-def _apply_record(con, rec: dict, now_s: str) -> None:
+def _apply_record(con, rec: dict, now_s: str, rates: dict, today: dt.date) -> int:
+    """Update the listing from one fetch result; returns 1 if metrics were stored."""
     symbol, status = rec["symbol"], rec["status"]
     if status != "ok":
         con.execute(
@@ -276,7 +272,7 @@ def _apply_record(con, rec: dict, now_s: str) -> None:
             con.execute(
                 "UPDATE listings SET status = 'delisted', status_reason = 'not found on Yahoo Finance', "
                 "status_changed = ? WHERE symbol = ? AND fail_count >= 3", (now_s, symbol))
-        return
+        return 0
 
     profile = rec.get("profile") or {}
     current = con.execute("SELECT status FROM listings WHERE symbol = ?", (symbol,)).fetchone()
@@ -294,23 +290,35 @@ def _apply_record(con, rec: dict, now_s: str) -> None:
         fields["status_changed"] = now_s  # also restarts the re-check timer of excluded listings
     sets = ", ".join(f"{k} = ?" for k in fields)
     con.execute(f"UPDATE listings SET {sets} WHERE symbol = ?", [*fields.values(), symbol])
-
     if new_status != "active":
-        return
-    for period, item, end, value in rec.get("series") or []:
-        con.execute(
-            "INSERT INTO financials (symbol, period, end_date, item, value, source, updated) "
-            "VALUES (?, ?, ?, ?, ?, 'yahoo', ?) ON CONFLICT (symbol, period, end_date, item) DO UPDATE SET "
-            "value = excluded.value, source = 'yahoo', updated = excluded.updated",
-            (symbol, period, end[:10], item, value, now_s))
-    db.upsert(con, "yahoo_stats", {"symbol": symbol, "fetched_at": rec["fetched_at"],
-                                   "stats_json": json.dumps(rec.get("stats") or {})})
+        return 0
+
+    stats = rec.get("stats") or {}
+    rows = [(period, item, end, value) for period, item, end, value in rec.get("series") or []]
+    m = metrics.compute(metrics.statements_from_rows(rows), stats, today)
+    trade_rate = fx.usd_rate(rates, profile.get("currency"))
+    fin_rate = fx.usd_rate(rates, profile.get("financial_currency") or profile.get("currency"))
+    mcap = stats.get("market_cap")
+    if mcap is None and stats.get("price") and stats.get("shares_outstanding"):
+        mcap = stats["price"] * stats["shares_outstanding"]
+    db.upsert(con, "metrics", {
+        "symbol": symbol,
+        "as_of": rec["fetched_at"][:10],
+        "price": stats.get("price"),
+        "market_cap": mcap,
+        "market_cap_usd": mcap * trade_rate if mcap is not None and trade_rate else None,
+        "pe_ttm": stats.get("pe_ttm"),
+        "dividend_yield": stats.get("dividend_yield"),
+        "avg_volume": stats.get("avg_volume"),
+        **m,
+        "fcf_ttm_usd": m["fcf_ttm"] * fin_rate if m["fcf_ttm"] is not None and fin_rate else None,
+    })
+    return 1
 
 
-def _update_fx(con, today: dt.date) -> dict[str, float]:
-    date, rates = fx.fetch_ecb()
-    currencies = {r[0] for r in con.execute(
-        "SELECT currency FROM listings UNION SELECT financial_currency FROM listings") if r[0]}
+def _update_fx(con, currencies: set[str]) -> dict[str, float]:
+    """Current USD rates (ECB, Yahoo for the rest); falls back to the last stored rates."""
+    _date, rates = fx.fetch_ecb()
     missing = {fx.MINOR_UNITS.get(c, (c,))[0] for c in currencies} - set(rates)
     if missing:
         try:
@@ -319,97 +327,12 @@ def _update_fx(con, today: dt.date) -> dict[str, float]:
             rates.update({k: v for k, v in fx.fetch_yahoo(YahooClient(rate=2.0), missing).items() if k not in rates})
         except Exception as exc:
             log.warning("Yahoo FX fallback failed: %s", exc)
-    for currency, rate in rates.items():
-        db.upsert(con, "fx_rates", {"currency": currency, "date": date or today.isoformat(), "usd_per_unit": rate},
-                  key=("currency", "date"))
-    # Fill gaps with the most recent stored rate.
-    for currency, rate in con.execute(
-            "SELECT currency, usd_per_unit FROM fx_rates f WHERE date = "
-            "(SELECT MAX(date) FROM fx_rates WHERE currency = f.currency)"):
+    for currency, rate in con.execute("SELECT currency, usd_per_unit FROM fx_rates"):
         rates.setdefault(currency, rate)
+    for currency, rate in rates.items():
+        db.upsert(con, "fx_rates", {"currency": currency, "usd_per_unit": rate}, key="currency")
     log.info("FX rates for %d currencies", len(rates))
     return rates
-
-
-def _apply_sec(con, now_s: str) -> None:
-    symbols = [r[0] for r in con.execute(
-        "SELECT symbol FROM listings WHERE market = 'US' AND status = 'active'")]
-    if not symbols:
-        return
-    history = sec.fetch_sec_history(symbols)
-    added = 0
-    for symbol, items in history.items():
-        for item, sec_values in items.items():
-            yahoo = {r[0]: r[1] for r in con.execute(
-                "SELECT end_date, value FROM financials WHERE symbol = ? AND period = 'A' AND item = ? "
-                "AND source = 'yahoo'", (symbol, item))}
-            extra = sec.validated_extension(yahoo, sec_values)
-            con.execute("DELETE FROM financials WHERE symbol = ? AND period = 'A' AND item = ? AND source = 'sec'",
-                        (symbol, item))
-            for end, value in extra.items():
-                con.execute(
-                    "INSERT OR IGNORE INTO financials (symbol, period, end_date, item, value, source, updated) "
-                    "VALUES (?, 'A', ?, ?, ?, 'sec', ?)", (symbol, end, item, value, now_s))
-                added += 1
-    log.info("SEC: %d companies matched, %d older annual values added", len(history), added)
-
-
-def _recompute_metrics(con, rates: dict, today: dt.date, fetched_now: set[str]) -> int:
-    listings = {r["symbol"]: dict(r) for r in con.execute(
-        "SELECT l.symbol, l.currency, l.financial_currency, s.fetched_at, s.stats_json "
-        "FROM listings l JOIN yahoo_stats s USING (symbol) WHERE l.status = 'active'")}
-    week = _monday(today)
-    n = 0
-
-    def flush(symbol, rows):
-        nonlocal n
-        info = listings.get(symbol)
-        if info is None:
-            return
-        stats = json.loads(info["stats_json"])
-        m = metrics.compute(metrics.history_from_rows(rows), stats, today)
-        trade_rate = fx.usd_rate(rates, info["currency"])
-        fin_rate = fx.usd_rate(rates, info["financial_currency"] or info["currency"])
-        mcap = stats.get("market_cap")
-        if mcap is None and stats.get("price") and stats.get("shares_outstanding"):
-            mcap = stats["price"] * stats["shares_outstanding"]
-        row = {
-            "symbol": symbol,
-            "as_of": info["fetched_at"][:10],
-            "price": stats.get("price"),
-            "market_cap": mcap,
-            "market_cap_usd": mcap * trade_rate if mcap is not None and trade_rate else None,
-            "pe_ttm": stats.get("pe_ttm"),
-            "dividend_yield": stats.get("dividend_yield"),
-            "avg_volume": stats.get("avg_volume"),
-            **m,
-            "fcf_ttm_usd": m["fcf_ttm"] * fin_rate if m["fcf_ttm"] is not None and fin_rate else None,
-        }
-        db.upsert(con, "metrics", row)
-        if symbol in fetched_now:
-            db.upsert(con, "history", {
-                "symbol": symbol, "week": week, "price": row["price"], "market_cap_usd": row["market_cap_usd"],
-                **{k: row[k] for k in ("rev_growth_1y", "rev_growth_5y", "earn_growth_5y", "roe",
-                                       "debt_to_equity", "fcf_ttm_usd", "peg_5y")}}, key=("symbol", "week"))
-        n += 1
-
-    current, rows = None, []
-    done = set()
-    for r in con.execute("SELECT symbol, period, item, end_date, value FROM financials ORDER BY symbol"):
-        if r[0] != current:
-            if current is not None:
-                flush(current, rows)
-                done.add(current)
-            current, rows = r[0], []
-        rows.append((r[1], r[2], r[3], r[4]))
-    if current is not None:
-        flush(current, rows)
-        done.add(current)
-    for symbol in listings.keys() - done:  # listings without any statements
-        flush(symbol, [])
-    # Metrics of listings that are no longer active are removed.
-    con.execute("DELETE FROM metrics WHERE symbol NOT IN (SELECT symbol FROM listings WHERE status = 'active')")
-    return n
 
 
 def _dedupe_eu(con, rates: dict, now_s: str) -> None:
@@ -439,6 +362,5 @@ def _dedupe_eu(con, rates: dict, now_s: str) -> None:
             con.execute("UPDATE listings SET status = 'duplicate', status_reason = ?, status_changed = ? "
                         "WHERE symbol = ?", (f"same company as {keep}", now_s, r["symbol"]))
             con.execute("DELETE FROM metrics WHERE symbol = ?", (r["symbol"],))
-            con.execute("DELETE FROM history WHERE symbol = ?", (r["symbol"],))
             removed += 1
     log.info("EU de-duplication: %d secondary listings hidden", removed)

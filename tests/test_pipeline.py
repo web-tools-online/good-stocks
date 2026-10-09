@@ -96,7 +96,7 @@ def workdir(tmp_path, monkeypatch):
 def test_build_and_export(workdir):
     db_path = workdir / "stocks.db"
     summary = pipeline.run_build(str(db_path), str(workdir / "universe.json"),
-                                 [str(workdir / "raw" / "*.jsonl.gz")], use_sec=False)
+                                 [str(workdir / "raw" / "*.jsonl.gz")])
     assert summary["ok"] == 10 and summary["error"] == 1
 
     con = sqlite3.connect(db_path)
@@ -120,10 +120,10 @@ def test_build_and_export(workdir):
     assert good["fcf_ttm"] == pytest.approx(18)
     assert m["CEZ.PR"]["market_cap_usd"] == pytest.approx(6e12 * 0.045)
     assert m["SAP.DE"]["fcf_ttm_usd"] == pytest.approx(18 * 1.1)
-    assert con.execute("SELECT COUNT(*) FROM history").fetchone()[0] == 6
+    tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    assert not tables & {"history", "financials"}  # current snapshot only
     con.close()
 
-    # Second week: universe re-run skips excluded/duplicate listings.
     out = workdir / "site_out"
     summary_path = workdir / "summary.json"
     res = export.run_export(str(db_path), str(ROOT / "site"), str(out), str(summary_path))
@@ -141,8 +141,7 @@ def test_build_and_export(workdir):
 
 def test_report(workdir, capsys):
     db_path = workdir / "stocks.db"
-    pipeline.run_build(str(db_path), str(workdir / "universe.json"), [str(workdir / "raw" / "*.jsonl.gz")],
-                       use_sec=False)
+    pipeline.run_build(str(db_path), str(workdir / "universe.json"), [str(workdir / "raw" / "*.jsonl.gz")])
     export.print_report(str(db_path))
     out = capsys.readouterr().out
     assert "US - largest companies" in out and "GOOD" in out
@@ -158,14 +157,13 @@ def test_export_without_database(tmp_path):
 
 def test_delisting_and_incomplete_universe(workdir):
     db_path = workdir / "stocks.db"
-    pipeline.run_build(str(db_path), str(workdir / "universe.json"), [str(workdir / "raw" / "*.jsonl.gz")],
-                       use_sec=False)
+    pipeline.run_build(str(db_path), str(workdir / "universe.json"), [str(workdir / "raw" / "*.jsonl.gz")])
     universe = json.loads((workdir / "universe.json").read_text())
     # US list now misses FAIL -> delisted; EU list is nearly empty -> treated as a broken source.
     universe["listings"] = [l for l in universe["listings"] if l["symbol"] not in ("FAIL", "SAP.DE", "AIR.PA")]
     universe["market_counts"] = {"US": 2, "EU": 0, "CZ": 1}
     (workdir / "universe2.json").write_text(json.dumps(universe))
-    pipeline.run_build(str(db_path), str(workdir / "universe2.json"), [], use_sec=False)
+    pipeline.run_build(str(db_path), str(workdir / "universe2.json"), [])
     con = sqlite3.connect(db_path)
     status = dict(con.execute("SELECT symbol, status FROM listings"))
     assert status["FAIL"] == "delisted"

@@ -1,8 +1,9 @@
-"""Compute the screener metrics from statement history and Yahoo key statistics.
+"""Compute the screener metrics from the current Yahoo Finance data.
 
-All functions are pure. ``history`` maps ``(period, item)`` to a list of
-``(end_date, value)`` tuples sorted by date, where period is ``A`` (annual),
-``Q`` (quarterly) or ``T`` (trailing twelve months).
+All functions are pure. ``statements`` holds the statement figures Yahoo returns with the
+current fundamentals (the last ~4 fiscal years and ~5 quarters). It maps
+``(period, item)`` to a list of ``(end_date, value)`` tuples sorted by date, where
+period is ``A`` (annual), ``Q`` (quarterly) or ``T`` (trailing twelve months).
 """
 
 from __future__ import annotations
@@ -45,9 +46,9 @@ def growth_5y(annual: Series, target_years: int = 5, min_years: int = 3,
               today: dt.date | None = None, max_age_days: int = 640):
     """Cumulative growth over ``target_years`` fiscal years.
 
-    Uses the latest fiscal year and the year ``target_years`` earlier. When that much
-    history is not available yet, the longest span of at least ``min_years`` is used
-    and its compound annual rate is extended to ``target_years``.
+    Uses the latest fiscal year and the year ``target_years`` earlier. Yahoo usually
+    reports only the last four fiscal years, so the longest available span of at least
+    ``min_years`` is used and its compound annual rate is extended to ``target_years``.
 
     Returns ``(growth, years_used)`` or ``(None, None)``.
     """
@@ -80,14 +81,14 @@ def _consecutive_quarters(quarterly: Series, n: int):
     return [v for _, v in tail]
 
 
-def revenue_growth_1y(history: dict, yahoo_quarterly_growth=None, today: dt.date | None = None):
+def revenue_growth_1y(statements: dict, yahoo_quarterly_growth=None, today: dt.date | None = None):
     """Revenue growth over the last year, TTM vs the previous TTM when possible.
 
     Returns ``(growth, basis)``.
     """
-    trailing = history.get(("T", "revenue"), [])
-    quarterly = history.get(("Q", "revenue"), [])
-    annual = history.get(("A", "revenue"), [])
+    trailing = statements.get(("T", "revenue"), [])
+    quarterly = statements.get(("Q", "revenue"), [])
+    annual = statements.get(("A", "revenue"), [])
 
     if trailing:
         d0, v0 = trailing[-1]
@@ -134,32 +135,32 @@ def _latest(series: Series, today: dt.date | None, max_age_days: int):
     return d, v
 
 
-def compute(history: dict, stats: dict, today: dt.date | None = None) -> dict:
+def compute(statements: dict, stats: dict, today: dt.date | None = None) -> dict:
     """Return the metrics stored in the ``metrics`` table (financial-currency units)."""
     stats = stats or {}
     out: dict = {}
 
     out["rev_growth_1y"], out["rev_growth_1y_basis"] = revenue_growth_1y(
-        history, stats.get("revenue_growth_q"), today)
+        statements, stats.get("revenue_growth_q"), today)
 
-    out["rev_growth_5y"], out["rev_growth_5y_years"] = growth_5y(history.get(("A", "revenue"), []), today=today)
+    out["rev_growth_5y"], out["rev_growth_5y_years"] = growth_5y(statements.get(("A", "revenue"), []), today=today)
 
-    income = history.get(("A", "net_income")) or history.get(("A", "net_income_common"), [])
+    income = statements.get(("A", "net_income")) or statements.get(("A", "net_income_common"), [])
     out["earn_growth_5y"], out["earn_growth_5y_years"] = growth_5y(income, today=today)
 
     # TTM figures
-    _, revenue_ttm = _latest(history.get(("T", "revenue"), []), today, 500)
-    _, ni_ttm = _latest(history.get(("T", "net_income"), []) or history.get(("T", "net_income_common"), []),
+    _, revenue_ttm = _latest(statements.get(("T", "revenue"), []), today, 500)
+    _, ni_ttm = _latest(statements.get(("T", "net_income"), []) or statements.get(("T", "net_income_common"), []),
                         today, 500)
     out["revenue_ttm"], out["net_income_ttm"] = revenue_ttm, ni_ttm
 
     # Balance sheet: most recent quarter, falling back to the latest fiscal year.
-    _, equity = _latest(history.get(("Q", "equity"), []), today, 400)
+    _, equity = _latest(statements.get(("Q", "equity"), []), today, 400)
     if equity is None:
-        _, equity = _latest(history.get(("A", "equity"), []), today, 640)
-    _, debt = _latest(history.get(("Q", "total_debt"), []), today, 400)
+        _, equity = _latest(statements.get(("A", "equity"), []), today, 640)
+    _, debt = _latest(statements.get(("Q", "total_debt"), []), today, 400)
     if debt is None:
-        _, debt = _latest(history.get(("A", "total_debt"), []), today, 640)
+        _, debt = _latest(statements.get(("A", "total_debt"), []), today, 640)
 
     roe = stats.get("roe")
     if roe is None and ni_ttm is not None and equity and equity > 0:
@@ -174,10 +175,10 @@ def compute(history: dict, stats: dict, today: dt.date | None = None) -> dict:
     out["debt_to_equity"] = de
 
     # Free cash flow (TTM) = operating cash flow - capital expenditure.
-    _, fcf = _latest(history.get(("T", "fcf"), []), today, 500)
+    _, fcf = _latest(statements.get(("T", "fcf"), []), today, 500)
     if fcf is None:
-        _, ocf = _latest(history.get(("T", "ocf"), []), today, 500)
-        _, capex = _latest(history.get(("T", "capex"), []), today, 500)
+        _, ocf = _latest(statements.get(("T", "ocf"), []), today, 500)
+        _, capex = _latest(statements.get(("T", "capex"), []), today, 500)
         if ocf is not None and capex is not None:
             fcf = ocf - abs(capex)
     if fcf is None:
@@ -186,13 +187,13 @@ def compute(history: dict, stats: dict, today: dt.date | None = None) -> dict:
 
     out["peg_5y"] = stats.get("peg_5y") if stats.get("peg_5y") is not None else stats.get("peg_ratio")
 
-    annual_rev = history.get(("A", "revenue"), [])
+    annual_rev = statements.get(("A", "revenue"), [])
     out["latest_fy_end"] = annual_rev[-1][0].isoformat() if annual_rev else None
     return out
 
 
-def history_from_rows(rows) -> dict:
-    """Build the ``history`` mapping from ``(period, item, end_date, value)`` rows."""
+def statements_from_rows(rows) -> dict:
+    """Build the ``statements`` mapping from ``(period, item, end_date, value)`` rows."""
     hist: dict = {}
     for period, item, end, value in rows:
         if value is None:

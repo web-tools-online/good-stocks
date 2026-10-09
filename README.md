@@ -12,14 +12,13 @@ It shows the metrics from the HelloStocks screener (revenue and earnings growth,
 1. Merge this branch into `main`.
 2. **Settings → Pages → Build and deployment → Source: _GitHub Actions_.**
 3. **Actions → "Update stock data" → Run workflow** (or wait for Saturday). The first full run takes about an hour. After that the site is live at the address above.
-4. *(Optional)* **Settings → Secrets and variables → Actions → Variables → New variable** `SEC_USER_AGENT` = `Your Name your@email.com`. The SEC asks automated clients to identify themselves. Without it a generic project identifier is sent.
 
 ## What is on the page
 
 | Column | Definition |
 | --- | --- |
 | Revenue Growth (1Y, TTM) | Revenue of the last 12 months vs. the 12 months before. Marked `*` when it is estimated from the latest quarter vs. the same quarter a year earlier. |
-| Earnings Growth (5Y) | Change in net income between the latest fiscal year and the fiscal year 5 years earlier. |
+| Earnings Growth (5Y) | Growth in net income over 5 years (see the note below). |
 | Revenue Growth (5Y) | The same for revenue. |
 | ROE | Return on equity: net income (TTM) ÷ shareholders' equity. |
 | Debt to Equity | Total debt ÷ shareholders' equity (most recent quarter). |
@@ -35,18 +34,16 @@ Other features:
 * sorting by any column
 * CSV download of the current view
 
-**About 5-year growth:** Yahoo Finance only gives the last 4 fiscal years. US companies get older years from SEC EDGAR, so their 5-year figure is exact. For EU and Czech companies the database stores every annual report it sees, so their figures become exact as history builds up. Until then the 5-year figure is marked `≈`: the yearly growth rate over the 3–4 years available, extended to 5 years.
+**About 5-year growth:** only current data is downloaded, with no historical data. Yahoo Finance's current financial statements cover the last 4 fiscal years. The 5-year figure is therefore the yearly growth rate over that span, extended to 5 years.
 
 ## How it works
 
 ```
 Saturday 04:23 UTC  ──►  universe ──► fetch × 12 shards (parallel) ──► build ──► deploy
                           │             │                               │          │
-   Nasdaq Trader lists ───┤             │ Yahoo Finance: profile,       │          └─► GitHub Pages
-   Yahoo screener (EU/CZ) ┘             │ key stats, financial          │
-                                        │ statements, PEG               ├─► SEC EDGAR (older US years)
-                                        │                               ├─► ECB exchange rates
-                                        │                               ├─► stocks.db  (release asset "data")
+   Nasdaq Trader lists ───┤             │ Yahoo Finance: current        │          └─► GitHub Pages
+   Yahoo screener (EU/CZ) ┘             │ profile, key stats,           ├─► ECB exchange rates
+                                        │ statements, PEG               ├─► stocks.db  (release asset "data")
                                         │                               └─► site/data/stocks.json + stocks.csv
 ```
 
@@ -56,7 +53,7 @@ Saturday 04:23 UTC  ──►  universe ──► fetch × 12 shards (parallel) 
   * A company listed on several EU exchanges is kept once, on its home exchange.
 * **Czech**: all shares on the Prague Stock Exchange.
 
-The database is never committed to git, so the repository stays small. Each run downloads the current `stocks.db` from the `data` release, updates it and uploads it again. A copy is also kept as a workflow artifact for 30 days. If a ticker fails to download, it keeps last week's numbers. A small `data/summary.json` is committed each week. That commit also stops GitHub from pausing the schedule, which it does after 60 days without repository activity.
+The database is never committed to git, so the repository stays small. Each run downloads the current `stocks.db` from the `data` release, overwrites last week's numbers with the current ones and uploads it again. It does not keep a history. A copy is also kept as a workflow artifact for 30 days. If a ticker fails to download, it keeps last week's numbers. A small `data/summary.json` is committed each week. That commit also stops GitHub from pausing the schedule, which it does after 60 days without repository activity.
 
 Pushes to any branch other than `main` run a quick smoke test (15 tickers per market) and publish nothing. Site-only changes on `main` are deployed by the *Deploy website* workflow from the latest database, without a new data refresh.
 
@@ -65,11 +62,8 @@ Pushes to any branch other than `main` run a quick smoke test (15 tickers per ma
 | Table | Content |
 | --- | --- |
 | `listings` | One row per ticker: market, exchange, name, sector, industry, country, currency, status (`active` / `excluded` / `duplicate` / `delisted`) |
-| `metrics` | Latest metrics per active ticker (growth rates and ROE as fractions, `*_usd` columns converted with ECB rates) |
-| `financials` | Statement history (annual `A`, quarterly `Q`, trailing `T`) for revenue, net income, FCF, equity, debt… from Yahoo and SEC; grows every week |
-| `history` | Weekly snapshot of the key metrics per ticker |
-| `yahoo_stats` | Latest raw key statistics from Yahoo |
-| `fx_rates`, `runs`, `meta` | Exchange rates, run log, last update time |
+| `metrics` | Current metrics per active ticker (growth rates and ROE as fractions, `*_usd` columns converted with ECB rates) |
+| `fx_rates`, `runs`, `meta` | Current exchange rates, run log, last update time |
 
 Example (with the `sqlite3` command-line tool or [DB Browser for SQLite](https://sqlitebrowser.org/)):
 
@@ -80,8 +74,12 @@ FROM listings l JOIN metrics m USING (symbol)
 WHERE l.market = 'CZ' AND m.roe > 0.15
 ORDER BY m.roe DESC;
 
--- Weekly ROE history of one company
-SELECT week, roe FROM history WHERE symbol = 'CEZ.PR' ORDER BY week;
+-- US stocks passing the main quality checks
+SELECT l.symbol, l.name, m.rev_growth_1y, m.roe, m.debt_to_equity, m.fcf_ttm_usd, m.peg_5y
+FROM listings l JOIN metrics m USING (symbol)
+WHERE l.market = 'US' AND m.roe >= 0.15 AND m.debt_to_equity BETWEEN 0 AND 1
+  AND m.fcf_ttm_usd > 0 AND m.peg_5y BETWEEN 0 AND 2
+ORDER BY m.market_cap_usd DESC;
 ```
 
 ## Running locally
@@ -101,7 +99,6 @@ python -m http.server --directory _site 8000   # open http://localhost:8000
 Code layout: `stockdb/` holds the Python pipeline:
 * `universe.py`: ticker lists
 * `yahoo.py`: Yahoo Finance client
-* `sec.py`: SEC EDGAR history
 * `metrics.py`: metric formulas
 * `pipeline.py`: the universe, fetch and build steps
 * `export.py`: JSON/CSV for the site

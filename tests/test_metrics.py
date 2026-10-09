@@ -3,7 +3,7 @@ import datetime as dt
 import pytest
 
 from stockdb import metrics
-from stockdb.metrics import growth_5y, revenue_growth_1y, history_from_rows
+from stockdb.metrics import growth_5y, revenue_growth_1y, statements_from_rows
 
 D = dt.date
 
@@ -51,7 +51,7 @@ def test_growth_5y_shifted_fiscal_year():
     assert years == 5 and g == pytest.approx(0.8)
 
 
-def test_revenue_growth_from_trailing_history():
+def test_revenue_growth_from_trailing_values():
     hist = {("T", "revenue"): [(D(2024, 6, 30), 100.0), (D(2025, 6, 30), 112.0)]}
     g, basis = revenue_growth_1y(hist)
     assert basis == "ttm" and g == pytest.approx(0.12)
@@ -87,7 +87,7 @@ def test_revenue_growth_yahoo_fallback():
 
 
 def test_compute_prefers_yahoo_ratios_and_computes_fcf():
-    hist = history_from_rows([
+    hist = statements_from_rows([
         ("A", "revenue", "2021-12-31", 100), ("A", "revenue", "2022-12-31", 110),
         ("A", "revenue", "2023-12-31", 120), ("A", "revenue", "2024-12-31", 130),
         ("A", "revenue", "2025-12-31", 150), ("A", "revenue", "2020-12-31", 75),
@@ -107,7 +107,7 @@ def test_compute_prefers_yahoo_ratios_and_computes_fcf():
 
 
 def test_compute_falls_back_to_statements():
-    hist = history_from_rows([
+    hist = statements_from_rows([
         ("T", "net_income", "2026-06-30", 25), ("Q", "equity", "2026-06-30", 100),
         ("Q", "total_debt", "2026-06-30", 50), ("T", "fcf", "2026-06-30", -5),
     ])

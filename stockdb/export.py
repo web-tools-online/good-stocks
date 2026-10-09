@@ -92,9 +92,7 @@ def run_export(db_path: str | None, site_dir: str, out_dir: str, summary_path: s
         con = db.connect(db_path)
         rows = query_rows(con)
         generated = db.get_meta(con, "last_update")
-        fx = {r[0]: round(r[1], 8) for r in con.execute(
-            "SELECT currency, usd_per_unit FROM fx_rates f WHERE date = "
-            "(SELECT MAX(date) FROM fx_rates WHERE currency = f.currency)")}
+        fx = {r[0]: round(r[1], 8) for r in con.execute("SELECT currency, usd_per_unit FROM fx_rates")}
         run = con.execute("SELECT * FROM runs ORDER BY id DESC LIMIT 1").fetchone()
         last_run = dict(run) if run else None
         con.close()
@@ -147,9 +145,7 @@ def print_report(db_path: str, top: int = 15) -> None:
             k = con.execute(f"SELECT COUNT({c}) FROM metrics JOIN listings USING (symbol) WHERE market = ?",
                             (market,)).fetchone()[0]
             parts.append(f"{c}={100 * k // n}%")
-        exact = con.execute("SELECT COUNT(*) FROM metrics JOIN listings USING (symbol) WHERE market = ? "
-                            "AND rev_growth_5y_years = 5", (market,)).fetchone()[0]
-        print(f"  {market} ({n}): {' '.join(parts)} exact5y={100 * exact // n}%")
+        print(f"  {market} ({n}): {' '.join(parts)}")
 
     def pct(v):
         return "" if v is None else f"{v * 100:.1f}"

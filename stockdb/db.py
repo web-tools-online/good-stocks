@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS listings (
     fail_count          INTEGER NOT NULL DEFAULT 0
 );
 
--- Latest metrics, one row per listing. Money values are in the financial currency
+-- Current metrics, one row per listing (overwritten every week). Money values are in the financial currency
 -- unless the column name ends with _usd. Growth rates and ROE are fractions (0.15 = 15 %).
 CREATE TABLE IF NOT EXISTS metrics (
     symbol               TEXT PRIMARY KEY REFERENCES listings(symbol),
@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS metrics (
     rev_growth_1y        REAL,
     rev_growth_1y_basis  TEXT,
     rev_growth_5y        REAL,
-    rev_growth_5y_years  INTEGER,           -- years of history actually used (5 = exact)
+    rev_growth_5y_years  INTEGER,           -- fiscal-year span the rate is based on
     earn_growth_5y       REAL,
     earn_growth_5y_years INTEGER,
     roe                  REAL,
@@ -56,47 +56,10 @@ CREATE TABLE IF NOT EXISTS metrics (
     latest_fy_end        TEXT
 );
 
--- Latest raw key statistics from Yahoo (kept so metrics can be recomputed).
-CREATE TABLE IF NOT EXISTS yahoo_stats (
-    symbol      TEXT PRIMARY KEY REFERENCES listings(symbol),
-    fetched_at  TEXT NOT NULL,
-    stats_json  TEXT NOT NULL
-);
-
--- Financial statement history, accumulated week after week (Yahoo only exposes the
--- last 4 fiscal years / 5 quarters, so the database grows a longer history over time).
-CREATE TABLE IF NOT EXISTS financials (
-    symbol    TEXT NOT NULL,
-    period    TEXT NOT NULL,   -- A = annual, Q = quarterly, T = trailing twelve months
-    end_date  TEXT NOT NULL,
-    item      TEXT NOT NULL,   -- revenue, net_income, fcf, equity, total_debt, ...
-    value     REAL NOT NULL,
-    source    TEXT NOT NULL,   -- yahoo | sec
-    updated   TEXT NOT NULL,
-    PRIMARY KEY (symbol, period, end_date, item)
-);
-
--- Weekly snapshot of the key metrics.
-CREATE TABLE IF NOT EXISTS history (
-    symbol          TEXT NOT NULL,
-    week            TEXT NOT NULL,   -- Monday of the ISO week, YYYY-MM-DD
-    price           REAL,
-    market_cap_usd  REAL,
-    rev_growth_1y   REAL,
-    rev_growth_5y   REAL,
-    earn_growth_5y  REAL,
-    roe             REAL,
-    debt_to_equity  REAL,
-    fcf_ttm_usd     REAL,
-    peg_5y          REAL,
-    PRIMARY KEY (symbol, week)
-);
-
+-- Current exchange rates used for the *_usd columns.
 CREATE TABLE IF NOT EXISTS fx_rates (
-    currency      TEXT NOT NULL,
-    date          TEXT NOT NULL,
-    usd_per_unit  REAL NOT NULL,
-    PRIMARY KEY (currency, date)
+    currency      TEXT PRIMARY KEY,
+    usd_per_unit  REAL NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS runs (
@@ -114,7 +77,6 @@ CREATE TABLE IF NOT EXISTS meta (
 );
 
 CREATE INDEX IF NOT EXISTS idx_listings_market ON listings(market, status);
-CREATE INDEX IF NOT EXISTS idx_history_week ON history(week);
 """
 
 

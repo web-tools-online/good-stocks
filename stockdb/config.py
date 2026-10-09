@@ -73,22 +73,5 @@ EXCLUSION_RECHECK_DAYS = 120
 # Listings whose last successful fetch is older than this are not shown on the site.
 MAX_STALE_DAYS = 45
 
-# SEC EDGAR (US filers) - used to extend annual revenue / net income history to 5+ years.
-SEC_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
-SEC_FRAMES_URL = "https://data.sec.gov/api/xbrl/frames/us-gaap/{tag}/USD/CY{year}.json"
-SEC_REVENUE_TAGS = [
-    "Revenues",
-    "RevenueFromContractWithCustomerExcludingAssessedTax",
-    "RevenueFromContractWithCustomerIncludingAssessedTax",
-    "SalesRevenueNet",
-    "RevenuesNetOfInterestExpense",
-]
-SEC_NET_INCOME_TAGS = [
-    "NetIncomeLoss",
-    "NetIncomeLossAvailableToCommonStockholdersBasic",
-    "ProfitLoss",
-]
-SEC_YEARS_BACK = 8
-
 # ECB euro reference rates, used to convert everything to USD for sorting/filtering.
 ECB_RATES_URL = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"
