@@ -120,3 +120,56 @@ def run_export(db_path: str | None, site_dir: str, out_dir: str, summary_path: s
         Path(summary_path).write_text(json.dumps(summary, indent=2) + "\n")
     log.info("exported %d stocks to %s", len(rows), out)
     return summary
+
+
+def print_report(db_path: str, top: int = 15) -> None:
+    """Human-readable sample: status counts and the largest companies of each market."""
+    con = db.connect(db_path)
+    print("Listings by status:")
+    for r in con.execute("SELECT market, status, COUNT(*) FROM listings GROUP BY 1, 2 ORDER BY 1, 2"):
+        print(f"  {r[0]:3} {r[1]:10} {r[2]:6}")
+    print("Most common exclusion reasons:")
+    for r in con.execute("SELECT status_reason, COUNT(*) FROM listings WHERE status != 'active' "
+                         "GROUP BY 1 ORDER BY 2 DESC LIMIT 8"):
+        print(f"  {r[1]:6}  {r[0]}")
+    print("Metric coverage (non-null share of active listings with metrics):")
+    cols = ["rev_growth_1y", "earn_growth_5y", "rev_growth_5y", "roe", "debt_to_equity", "fcf_ttm", "peg_5y",
+            "market_cap_usd"]
+    for market in config.MARKETS:
+        n = con.execute("SELECT COUNT(*) FROM metrics JOIN listings USING (symbol) WHERE market = ?",
+                        (market,)).fetchone()[0]
+        if not n:
+            continue
+        parts = []
+        for c in cols:
+            k = con.execute(f"SELECT COUNT({c}) FROM metrics JOIN listings USING (symbol) WHERE market = ?",
+                            (market,)).fetchone()[0]
+            parts.append(f"{c}={100 * k // n}%")
+        exact = con.execute("SELECT COUNT(*) FROM metrics JOIN listings USING (symbol) WHERE market = ? "
+                            "AND rev_growth_5y_years = 5", (market,)).fetchone()[0]
+        print(f"  {market} ({n}): {' '.join(parts)} exact5y={100 * exact // n}%")
+
+    def pct(v):
+        return "" if v is None else f"{v * 100:.1f}"
+
+    def num(v, d=2):
+        return "" if v is None else f"{v:.{d}f}"
+
+    header = (f"{'symbol':10} {'name':26} {'country':14} {'mcap$bn':>8} {'g1%':>6} {'b':6} {'e5%':>7} {'y':>1} "
+              f"{'g5%':>7} {'y':>1} {'roe%':>6} {'d/e':>5} {'fcf$bn':>7} {'peg':>5}")
+    for market in config.MARKETS:
+        rows = con.execute(
+            "SELECT l.symbol, l.name, l.country, m.* FROM listings l JOIN metrics m USING (symbol) "
+            "WHERE l.market = ? ORDER BY m.market_cap_usd IS NULL, m.market_cap_usd DESC LIMIT ?",
+            (market, top)).fetchall()
+        if not rows:
+            continue
+        print(f"\n{market} - largest companies")
+        print(header)
+        for r in rows:
+            print(f"{r['symbol'][:10]:10} {(r['name'] or '')[:26]:26} {(r['country'] or '')[:14]:14} "
+                  f"{num((r['market_cap_usd'] or 0) / 1e9, 1):>8} {pct(r['rev_growth_1y']):>6} "
+                  f"{(r['rev_growth_1y_basis'] or ''):6} {pct(r['earn_growth_5y']):>7} {r['earn_growth_5y_years'] or '':>1} "
+                  f"{pct(r['rev_growth_5y']):>7} {r['rev_growth_5y_years'] or '':>1} {pct(r['roe']):>6} "
+                  f"{num(r['debt_to_equity']):>5} {num((r['fcf_ttm_usd'] or 0) / 1e9):>7} {num(r['peg_5y']):>5}")
+    con.close()

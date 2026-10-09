@@ -40,7 +40,7 @@ Other features:
 ## How it works
 
 ```
-Saturday 04:23 UTC  ──►  universe ──► fetch × 10 shards (parallel) ──► build ──► deploy
+Saturday 04:23 UTC  ──►  universe ──► fetch × 12 shards (parallel) ──► build ──► deploy
                           │             │                               │          │
    Nasdaq Trader lists ───┤             │ Yahoo Finance: profile,       │          └─► GitHub Pages
    Yahoo screener (EU/CZ) ┘             │ key stats, financial          │

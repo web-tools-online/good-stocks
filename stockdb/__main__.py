@@ -39,6 +39,10 @@ def main(argv=None) -> int:
     p.add_argument("--out", default="_site")
     p.add_argument("--summary", default=None, help="also write summary.json to this path")
 
+    p = sub.add_parser("report", help="print a sample of the database")
+    p.add_argument("--db", default="work/stocks.db")
+    p.add_argument("--top", type=int, default=15, help="largest companies per market")
+
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     logging.getLogger("yfinance").setLevel(logging.CRITICAL)
@@ -62,6 +66,10 @@ def main(argv=None) -> int:
         from .export import run_export
 
         run_export(args.db, args.site, args.out, args.summary)
+    elif args.command == "report":
+        from .export import print_report
+
+        print_report(args.db, args.top)
     return 0
 
 

@@ -128,6 +128,16 @@ def test_build_and_export(workdir):
     assert json.loads(summary_path.read_text())["stocks"] == 4
 
 
+def test_report(workdir, capsys):
+    db_path = workdir / "stocks.db"
+    pipeline.run_build(str(db_path), str(workdir / "universe.json"), [str(workdir / "raw" / "*.jsonl.gz")],
+                       use_sec=False)
+    export.print_report(str(db_path))
+    out = capsys.readouterr().out
+    assert "US - largest companies" in out and "GOOD" in out
+    assert "company based outside the EU" in out
+
+
 def test_export_without_database(tmp_path):
     res = export.run_export(None, str(ROOT / "site"), str(tmp_path / "out"))
     assert res["stocks"] == 0

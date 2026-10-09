@@ -19,14 +19,23 @@ from . import config
 
 log = logging.getLogger(__name__)
 
-DEFAULT_USER_AGENT = "good-stocks screener (https://github.com/web-tools-online/good-stocks)"
+def user_agent() -> str:
+    """SEC requires a "Name contact@email" User-Agent; requests without one get HTTP 403.
+
+    Set the SEC_USER_AGENT repository variable to your own contact. The fallback uses the
+    repository owner's public GitHub no-reply address.
+    """
+    if os.environ.get("SEC_USER_AGENT"):
+        return os.environ["SEC_USER_AGENT"]
+    owner = os.environ.get("GITHUB_REPOSITORY_OWNER") or "good-stocks"
+    return f"good-stocks-screener {owner}@users.noreply.github.com"
 
 
 def _session():
     import requests
 
     s = requests.Session()
-    s.headers["User-Agent"] = os.environ.get("SEC_USER_AGENT") or DEFAULT_USER_AGENT
+    s.headers["User-Agent"] = user_agent()
     s.headers["Accept-Encoding"] = "gzip, deflate"
     return s
 
