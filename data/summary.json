@@ -1,0 +1,17 @@
+{
+  "generated": "2026-10-09T06:19:28Z",
+  "stocks": 9593,
+  "by_market": {
+    "US": 5595,
+    "EU": 3943,
+    "CZ": 55
+  },
+  "last_run": {
+    "id": 1,
+    "finished": "2026-10-09T06:19:28Z",
+    "universe_size": 14781,
+    "fetched_ok": 14781,
+    "fetched_failed": 0,
+    "notes": null
+  }
+}
