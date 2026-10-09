@@ -76,8 +76,8 @@
       <label class="field">
         <span>Criteria met</span>
         <select id="f-criteria">
-          <option value="0">Any</option>
-          <option value="all" selected>All</option>
+          <option value="0" selected>Any</option>
+          <option value="all">All</option>
           <option value="-1">All but one</option>
           <option value="-2">All but two</option>
         </select>
@@ -99,7 +99,7 @@
     </div>
 
     <section class="criteria-panel" id="criteria-panel" hidden aria-label="Strategy criteria">
-      <p class="muted small">A stock passes a criterion when its value meets the threshold. Missing data counts as a fail. Untick a criterion to ignore it. Your settings are saved in this browser.</p>
+      <p class="muted small">A stock passes a criterion when its value meets the threshold. Missing data counts as a fail, except PEG: a stock without analysts' growth forecasts is scored without it (e.g. 6/6). Untick a criterion to ignore it. Your settings are saved in this browser.</p>
       <div id="criteria-list" class="criteria-list"></div>
       <button class="btn btn-quiet" id="criteria-reset">Reset to defaults</button>
     </section>
@@ -142,7 +142,7 @@
             <dt>ROE</dt><dd>Net income (TTM) ÷ shareholders' equity.</dd>
             <dt>Debt to Equity</dt><dd>Total debt ÷ shareholders' equity (most recent quarter).</dd>
             <dt>Free Cash Flow (TTM)</dt><dd>Operating cash flow − capital expenditure, last 12 months.</dd>
-            <dt>PEG (5Y expected)</dt><dd>P/E ÷ analysts' expected yearly earnings growth over the next 5 years.</dd>
+            <dt>PEG (5Y expected)</dt><dd>P/E ÷ analysts' expected yearly earnings growth over the next 5 years. Many European companies have no analyst forecast; they are scored without PEG (e.g. 6/6 instead of x/7).</dd>
           </dl>
         </div>
         <div>
