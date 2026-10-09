@@ -25,14 +25,16 @@ It shows the metrics from the HelloStocks screener (revenue and earnings growth,
 | Free Cash Flow (TTM) | Operating cash flow − capital expenditure, last 12 months. |
 | PEG (5Y Exp) | P/E ÷ analysts' expected yearly EPS growth over the next 5 years. |
 | P/E (TTM) | Share price ÷ earnings per share of the last 12 months. |
-| Dividend Yield | Expected dividends over the next 12 months ÷ share price. |
+| Dividend Yield | Annual dividend ÷ share price (Yahoo's forward dividend, or the last 12 months' if there is no forecast). |
 
-**Data checks:** Yahoo's per-share figures (dividend per share, EPS) are occasionally broken, usually right after a reverse split. For example, GMEX showed a $453.60 dividend on a $1.94 share, and a P/E of 0.0007 despite a net loss. They are checked against company totals from the financial statements:
+**Data checks:** Yahoo's per-share figures (dividend per share, EPS) are occasionally broken, usually right after a reverse split. For example, GMEX showed a $453.60 dividend on a $1.94 share, and a P/E of 0.0007. Values that are implausible on their face are checked against company totals from the financial statements:
 * A dividend larger than the share price is hidden.
-* A yield of 15 % or more must be confirmed by the dividends actually paid. Otherwise the paid amount ÷ market cap is shown, marked `*`.
-* A P/E of a loss-making company, or one more than 10× off market cap ÷ net income, is hidden.
+* A yield of 15 % or more must be backed by the dividends actually paid (cash-flow statement ÷ market cap).
+  * If Yahoo's yield is more than twice that amount, the paid amount is shown, marked `*`.
+  * If nothing was paid, the yield is hidden.
+* A P/E below 1 is hidden unless market cap ÷ net income confirms it. Its PEG is hidden with it.
 
-Ordinary values are left as Yahoo reports them. On a sample of 62 dividend payers none of them changed. Run **Actions → "Inspect tickers"** to see the raw Yahoo data behind any ticker.
+Ordinary values are left as Yahoo reports them. On a sample of 62 dividend payers none of them changed. Net income can legitimately differ from Yahoo's EPS (one-off gains, discontinued operations, share classes), so P/Es of 1 or more are never second-guessed. Run **Actions → "Inspect tickers"** to see the raw Yahoo data behind any ticker.
 
 The default strategy criteria are: revenue growth 1Y ≥ 5 %, earnings growth 4Y ≥ 30 %, revenue growth 4Y ≥ 30 %, ROE ≥ 15 %, debt/equity ≤ 1, FCF > 0 and 0 < PEG ≤ 2. A missing value counts as a fail, except for PEG: stocks without analysts' growth forecasts (common in Europe) are scored on the other six criteria, shown e.g. as 6/6. Open **Show Strategy Criteria** to change thresholds or switch criteria off. Your settings are saved in your browser.
 

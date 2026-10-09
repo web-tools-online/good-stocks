@@ -184,7 +184,7 @@ function scoreRows() {
     let n = 0, total = 0;
     const res = {};
     for (const c of active) {
-      if (c.optional && r[VALUE[c.id]] == null && !PE_UNUSABLE[r.peb]) continue; // not counted either way
+      if (c.optional && r[VALUE[c.id]] == null) continue; // not counted either way
       const ok = PASS[c.id](r, c.value);
       res[c.id] = ok;
       total++;
@@ -264,22 +264,20 @@ function growthCell(r, key, critId) {
   return `<td class="${cellClass(r, critId)}">${pctFmt(v)}</td>`;
 }
 
-// Why a P/E is missing when Yahoo had one (see stockdb/metrics.py: price_earnings).
-const PE_UNUSABLE = {
-  loss: "the company made a loss over the last 12 months",
-  conflict: "Yahoo's P/E does not match market cap ÷ net income (a data error), so it is hidden",
+// Why a value is hidden or replaced (see stockdb/metrics.py: price_earnings, dividend_yield).
+const PE_HIDDEN = "Hidden: Yahoo's P/E is below 1 and does not match market cap ÷ net income (a data error)";
+const DIVIDEND_NOTE = {
+  invalid: "Hidden: Yahoo's dividend is larger than the share price (a data error)",
+  unconfirmed: "Hidden: Yahoo's yield of 15 % or more is not confirmed by the dividends the company actually paid",
+  cash: "Dividends actually paid in the latest reported 12 months ÷ market cap. Yahoo's per-share figure was more than twice as high.",
 };
 
 function dividendCell(r) {
-  if (r.dy == null) {
-    const why = r.dyb === "invalid" ? ' title="Hidden: Yahoo\'s dividend figure is larger than the share price (a data error)"' : "";
-    return `<td class="na"${why}>—</td>`;
-  }
+  const note = DIVIDEND_NOTE[r.dyb];
+  const title = note ? ` title="${esc(note)}"` : "";
+  if (r.dy == null) return `<td class="na"${title}>—</td>`;
   const text = r.dy === 0 ? "0%" : (r.dy * 100).toFixed(2) + "%";
-  if (r.dyb === "cash") {
-    return `<td title="Dividends actually paid over the last 12 months ÷ market cap. Yahoo's per-share figure was not confirmed by them.">${text}<span class="approx">*</span></td>`;
-  }
-  return `<td>${text}</td>`;
+  return `<td${title}>${text}${r.dyb === "cash" ? '<span class="approx">*</span>' : ""}</td>`;
 }
 
 function renderBody() {
@@ -305,8 +303,8 @@ function renderBody() {
       <td class="${r.roe == null ? "na" : cellClass(r, "roe")}">${pctFmt(r.roe)}</td>
       <td class="${r.de == null ? "na" : cellClass(r, "de")}">${numFmt(r.de)}</td>
       <td class="${fcf.value == null ? "na" : cellClass(r, "fcf")}">${moneyFmt(fcf.value, fcf.currency)}</td>
-      <td class="${r.peg == null ? (PE_UNUSABLE[r.peb] ? cellClass(r, "peg") : "na") : cellClass(r, "peg")}"${r.peg == null ? ` title="${esc(PE_UNUSABLE[r.peb] ? "No PEG: " + PE_UNUSABLE[r.peb] : "No analyst growth forecast - PEG is left out of this stock's score")}"` : ""}>${numFmt(r.peg)}</td>
-      <td class="${r.pe == null ? "na" : ""}"${r.pe == null && PE_UNUSABLE[r.peb] ? ` title="${esc(PE_UNUSABLE[r.peb])}"` : ""}>${numFmt(r.pe, 1)}</td>
+      <td class="${r.peg == null ? "na" : cellClass(r, "peg")}"${r.peg == null ? ` title="${esc(r.peb === "invalid" ? "Hidden together with the P/E (data error) - PEG is left out of this stock's score" : "No analyst growth forecast - PEG is left out of this stock's score")}"` : ""}>${numFmt(r.peg)}</td>
+      <td class="${r.pe == null ? "na" : ""}"${r.pe == null && r.peb === "invalid" ? ` title="${esc(PE_HIDDEN)}"` : ""}>${numFmt(r.pe, 1)}</td>
       ${dividendCell(r)}
     </tr>`;
   }).join("");

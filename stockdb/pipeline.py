@@ -94,7 +94,9 @@ def fetch_one(client, listing: dict) -> dict:
             series, peg, currency = client.timeseries(listing["symbol"])
             rec["series"] = series
             rec["stats"]["peg_5y"] = peg
-            if currency and not profile.get("financial_currency"):
+            if currency:
+                # The statements' own currency code is more reliable than financialCurrency
+                # (YPF reports in USD but is labelled ARS).
                 profile["financial_currency"] = currency
         except Exception as exc:  # keep the profile and key statistics
             rec["error"] = f"timeseries: {type(exc).__name__}: {exc}"[:300]

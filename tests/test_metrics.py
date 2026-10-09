@@ -166,42 +166,60 @@ def test_trailing_yield_used_when_forward_missing():
 
 def test_high_yield_after_recent_split_without_cash_data_is_hidden():
     stats = {"dividend_yield": 0.4, "last_split_date": _ts(D(2026, 5, 7))}
-    assert metrics.dividend_yield(stats, {}, 1e8, TODAY) == (None, "invalid")
+    assert metrics.dividend_yield(stats, {}, 1e8, TODAY) == (None, "unconfirmed")
     stats["last_split_date"] = _ts(D(2020, 8, 31))  # old split: nothing suspicious
     assert metrics.dividend_yield(stats, {}, 1e8, TODAY) == (0.4, "yahoo")
+
+
+def test_high_yield_with_nothing_paid_is_hidden():
+    # the cash-flow statement explicitly reports 0 dividends paid
+    assert metrics.dividend_yield({"dividend_yield": 0.3}, _paid(ttm=0.0), 1e8, TODAY) == (None, "unconfirmed")
+
+
+def test_dividend_cut_keeps_yahoos_lower_forward_yield():
+    # paid 40 % of the market cap last year, Yahoo's forward yield after a cut is 16 %
+    assert metrics.dividend_yield({"dividend_yield": 0.16}, _paid(ttm=4e7), 1e8, TODAY) == (0.16, "yahoo")
 
 
 def test_stale_dividends_paid_are_ignored():
     old = statements_from_rows([("A", "dividends_paid", "2022-06-30", -5e6)])
     assert metrics.dividends_paid_ttm(old, TODAY) is None
+    zero = statements_from_rows([("T", "dividends_paid", "2026-06-30", 0.0)])
+    assert metrics.dividends_paid_ttm(zero, TODAY) == 0
 
 
-def test_pe_of_loss_making_company_is_hidden():
+def test_implausible_pe_is_hidden():
     # GMEX: P/E 0.0007 from an EPS of $2,800 while the company lost $8.9M
-    assert metrics.price_earnings({"pe_ttm": 0.000692877}, -8.873e6, 1459904) == (None, "loss")
-    # also without a Yahoo P/E (CYNCA.ST), so PEG counts as failed for every loss-maker
-    assert metrics.price_earnings({}, -3.44e8, 1.65e9) == (None, "loss")
-
-
-def test_pe_far_off_market_cap_over_net_income_is_hidden():
+    assert metrics.price_earnings({"pe_ttm": 0.000692877}, -8.873e6, 1459904) == (None, "invalid")
     # CHSN: P/E 0.0036 vs market cap / net income = 13.1 (reverse split 1:100)
-    assert metrics.price_earnings({"pe_ttm": 0.0036471232}, 1.875e5, 2461734) == (None, "conflict")
-    # below 1 and more than 2x off
-    assert metrics.price_earnings({"pe_ttm": 0.815}, 1e6, 7.35e6) == (None, "conflict")
+    assert metrics.price_earnings({"pe_ttm": 0.0036471232}, 1.875e5, 2461734) == (None, "invalid")
+    # AZUL, no usable net income to confirm it
+    assert metrics.price_earnings({"pe_ttm": 1.2428857e-05}, None, 1.29e9) == (None, "invalid")
 
 
-def test_ordinary_pe_differences_are_kept():
-    # holding structures, share classes etc. give differences up to several times
+def test_pe_below_one_confirmed_by_statements_is_kept():
+    # LX: P/E 0.81, market cap / net income 0.74
+    assert metrics.price_earnings({"pe_ttm": 0.81}, 1.038e9, 7.7e8) == (0.81, "yahoo")
+
+
+def test_ordinary_pes_are_never_second_guessed():
+    # TRS: one-off gain from selling a division makes net income exceed revenue
+    assert metrics.price_earnings({"pe_ttm": 15.56}, 9.052e8, 1.379e9) == (15.56, "yahoo")
+    # SONY: net loss only from discontinued operations (spin-off)
+    assert metrics.price_earnings({"pe_ttm": 19.8}, -2.216e11, 2.0e13) == (19.8, "yahoo")
+    # holding structures / share classes
     assert metrics.price_earnings({"pe_ttm": 60.4}, 1e8, 1.12e9) == (60.4, "yahoo")
-    assert metrics.price_earnings({"pe_ttm": 0.81}, 1.038e9, 7.7e8) == (0.81, "yahoo")  # LX: confirmed
-    assert metrics.price_earnings({"pe_ttm": 39.04}, None, 4.968e12) == (39.04, "yahoo")  # nothing to check
-    assert metrics.price_earnings({}, 1e9, 1e10) == (None, None)  # no Yahoo P/E: none
+    assert metrics.price_earnings({"pe_ttm": 39.04}, None, 4.968e12) == (39.04, "yahoo")
+    assert metrics.price_earnings({}, 1e9, 1e10) == (None, None)
+    assert metrics.price_earnings({}, -3.44e8, 1.65e9) == (None, None)
 
 
-def test_compute_drops_peg_with_unusable_pe():
+def test_compute_drops_peg_only_with_invalid_pe():
     st = statements_from_rows([("T", "net_income", "2026-06-30", -5e6)])
+    m = metrics.compute(st, {"pe_ttm": 0.0007, "peg_5y": 0.8}, TODAY, market_cap_fin=1e8)
+    assert (m["pe_ttm"], m["pe_basis"], m["peg_5y"]) == (None, "invalid", None)
     m = metrics.compute(st, {"pe_ttm": 12.0, "peg_5y": 0.8}, TODAY, market_cap_fin=1e8)
-    assert m["pe_ttm"] is None and m["pe_basis"] == "loss" and m["peg_5y"] is None
+    assert (m["pe_ttm"], m["pe_basis"], m["peg_5y"]) == (12.0, "yahoo", 0.8)
     st = statements_from_rows([("T", "net_income", "2026-06-30", 1e7), ("T", "net_income_common", "2026-06-30", 9e6)])
     m = metrics.compute(st, {"pe_ttm": 12.0, "peg_5y": 0.8, "dividend_yield": 0.02}, TODAY, market_cap_fin=1e8)
     assert (m["pe_ttm"], m["pe_basis"], m["peg_5y"]) == (12.0, "yahoo", 0.8)

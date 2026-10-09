@@ -118,7 +118,7 @@ def test_build_and_export(workdir):
     assert set(m) == {"GOOD", "SAP.DE", "AIR.PA", "CEZ.PR", "CTPNV.PR", "EMPTY.PR", "BROKE"}
     broke = m["BROKE"]
     assert (broke["dividend_yield"], broke["dividend_basis"]) == (None, "invalid")
-    assert (broke["pe_ttm"], broke["pe_basis"], broke["peg_5y"]) == (None, "loss", None)
+    assert (broke["pe_ttm"], broke["pe_basis"], broke["peg_5y"]) == (None, "invalid", None)
     assert (m["GOOD"]["pe_ttm"], m["GOOD"]["pe_basis"]) == (20.0, "yahoo")
     assert m["CTPNV.PR"]["market_cap_usd"] == pytest.approx(18.0 * 4.5e8 * 1.1)
     good = m["GOOD"]
@@ -146,7 +146,7 @@ def test_build_and_export(workdir):
     assert len(csv_lines) == 7
     assert json.loads(summary_path.read_text())["stocks"] == 6
     broke_row = next(r for r in rows if r["s"] == "BROKE")
-    assert broke_row["dy"] is None and broke_row["dyb"] == "invalid" and broke_row["peb"] == "loss"
+    assert broke_row["dy"] is None and broke_row["dyb"] == "invalid" and broke_row["peb"] == "invalid"
 
 
 def test_report(workdir, capsys):
@@ -192,6 +192,20 @@ def test_fetch_one_uses_statement_currency():
     rec = pipeline.fetch_one(Client(), {"symbol": "01P.DE", "market": "EU"})
     assert rec["profile"]["financial_currency"] == "USD"
     assert pipeline.listing_status("EU", rec["profile"])[0] == "excluded"
+
+
+def test_statement_currency_overrides_financial_currency_label():
+    # YPF: Yahoo labels the financials ARS, but the statement values are in USD
+    class Client:
+        def quote_summary(self, symbol):
+            return ({"name": "YPF", "country": "Argentina", "currency": "USD", "financial_currency": "ARS",
+                     "quote_type": "EQUITY"}, {"price": 49.7, "pe_ttm": 26.26})
+
+        def timeseries(self, symbol):
+            return ([["A", "revenue", "2025-12-31", 2.06e10]], 0.1, "USD")
+
+    rec = pipeline.fetch_one(Client(), {"symbol": "YPF", "market": "US"})
+    assert rec["profile"]["financial_currency"] == "USD"
 
 
 def test_export_hides_impossible_yield_saved_before_checks(workdir):

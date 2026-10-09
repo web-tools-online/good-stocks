@@ -37,10 +37,10 @@ CREATE TABLE IF NOT EXISTS metrics (
     price                REAL,
     market_cap           REAL,              -- trading currency
     market_cap_usd       REAL,
-    pe_ttm               REAL,              -- checked against market cap / net income
-    pe_basis             TEXT,              -- yahoo | statements | loss
-    dividend_yield       REAL,              -- checked against dividends actually paid
-    dividend_basis       TEXT,              -- yahoo | cash
+    pe_ttm               REAL,              -- Yahoo's; a P/E below 1 must match market cap / net income
+    pe_basis             TEXT,              -- yahoo | invalid (hidden)
+    dividend_yield       REAL,              -- Yahoo's; 15 %+ must match dividends actually paid
+    dividend_basis       TEXT,              -- yahoo | cash | invalid | unconfirmed (hidden)
     avg_volume           REAL,
     revenue_ttm          REAL,
     net_income_ttm       REAL,
