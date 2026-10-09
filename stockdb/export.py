@@ -28,7 +28,10 @@ FIELDS = [
     ("p", "m.price", 4),
     ("mc", "m.market_cap_usd", 0),
     ("pe", "m.pe_ttm", 2),
-    ("dy", "m.dividend_yield", 4),
+    ("peb", "m.pe_basis", None),
+    # a yield of 100 %+ is always a data error, also in rows saved before the checks existed
+    ("dy", "CASE WHEN m.dividend_yield < 1 THEN m.dividend_yield END", 4),
+    ("dyb", "CASE WHEN m.dividend_yield >= 1 THEN 'invalid' ELSE m.dividend_basis END", None),
     ("g1", "m.rev_growth_1y", 4),
     ("g1b", "m.rev_growth_1y_basis", None),
     ("g4", "m.rev_growth_4y", 4),
@@ -144,6 +147,15 @@ def print_report(db_path: str, top: int = 15) -> None:
                             (market,)).fetchone()[0]
             parts.append(f"{c}={100 * k // n}%")
         print(f"  {market} ({n}): {' '.join(parts)}")
+
+    print("Data checks (see metrics.py: dividend_yield / price_earnings):")
+    for col in ("dividend_basis", "pe_basis"):
+        counts = dict(con.execute(f"SELECT COALESCE({col}, '-'), COUNT(*) FROM metrics GROUP BY 1").fetchall())
+        print(f"  {col}: {counts}")
+    print("Highest dividend yields:")
+    for r in con.execute("SELECT symbol, dividend_yield, dividend_basis FROM metrics WHERE dividend_yield IS NOT NULL "
+                         "ORDER BY dividend_yield DESC LIMIT 10"):
+        print(f"  {r[0]:12} {r[1] * 100:7.2f} %  ({r[2]})")
 
     def pct(v):
         return "" if v is None else f"{v * 100:.1f}"

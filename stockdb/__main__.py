@@ -42,6 +42,10 @@ def main(argv=None) -> int:
     p.add_argument("--db", default="work/stocks.db")
     p.add_argument("--top", type=int, default=15, help="largest companies per market")
 
+    p = sub.add_parser("inspect", help="print raw Yahoo Finance fields of some tickers (debugging)")
+    p.add_argument("symbols", nargs="+")
+    p.add_argument("--compact", action="store_true", help="one JSON line per ticker")
+
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     logging.getLogger("yfinance").setLevel(logging.CRITICAL)
@@ -69,6 +73,10 @@ def main(argv=None) -> int:
         from .export import print_report
 
         print_report(args.db, args.top)
+    elif args.command == "inspect":
+        from .inspect import run_inspect
+
+        run_inspect(args.symbols, args.compact)
     return 0
 
 

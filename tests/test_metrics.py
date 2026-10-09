@@ -109,3 +109,118 @@ def test_compute_falls_back_to_statements():
     assert m["fcf_ttm"] == -5
     assert m["peg_5y"] == 0.9
     assert m["rev_growth_4y"] is None
+
+
+# --- dividend yield / P/E checks, using the real Yahoo figures that motivated them -----
+
+TODAY = D(2026, 10, 9)
+
+
+def _paid(ttm=None, annual=None, end="2026-06-30"):
+    rows = []
+    if ttm is not None:
+        rows.append(("T", "dividends_paid_common", end, -ttm))
+    if annual is not None:
+        rows.append(("A", "dividends_paid", "2025-12-31", -annual))
+    return statements_from_rows(rows)
+
+
+def _ts(day):
+    import datetime as _dt
+    return _dt.datetime(day.year, day.month, day.day, tzinfo=_dt.timezone.utc).timestamp()
+
+
+def test_dividend_above_share_price_is_hidden():
+    # GMEX: a $453.60 "dividend" on a $1.94 share, no dividends in the cash-flow statement
+    stats = {"dividend_yield": 232.61539, "trailing_dividend_yield": 170.53, "last_split_date": _ts(D(2026, 9, 28))}
+    assert metrics.dividend_yield(stats, {}, 1459904, TODAY) == (None, "invalid")
+    # CYNCA.ST: a spin-off recorded as a 135 SEK dividend on a 43.82 SEK share
+    assert metrics.dividend_yield({"dividend_yield": 3.2067, "trailing_dividend_yield": 0.0}, {}, 1.65e9, TODAY) \
+        == (None, "invalid")
+
+
+def test_high_yield_not_confirmed_by_cash_uses_dividends_paid():
+    # LARK.ST: Yahoo 2.00 SEK/share (90.5 %), but 3.96M SEK paid on 19.8M shares = 0.20 SEK
+    y, basis = metrics.dividend_yield({"dividend_yield": 0.905}, _paid(annual=3.96e6), 45146728, TODAY)
+    assert basis == "cash" and y == pytest.approx(0.0877, abs=1e-4)
+
+
+def test_high_yield_confirmed_by_cash_is_kept():
+    # STX.WA really paid ~40 %: 180.5M PLN on a 452M PLN market cap
+    assert metrics.dividend_yield({"dividend_yield": 0.4239}, _paid(ttm=1.805e8), 4.52e8, TODAY) == (0.4239, "yahoo")
+    # NHTC: cash yield 79 % vs Yahoo 42.9 % - within a factor of two
+    assert metrics.dividend_yield({"dividend_yield": 0.4287}, _paid(ttm=6.32e6), 8.0e6, TODAY) == (0.4287, "yahoo")
+
+
+def test_ordinary_yields_are_never_second_guessed():
+    # Sacyr pays scrip dividends (shares): cash paid is far below the yield, Yahoo is right
+    assert metrics.dividend_yield({"dividend_yield": 0.0516}, _paid(ttm=1.0e7), 7.8e8, TODAY) == (0.0516, "yahoo")
+    assert metrics.dividend_yield({"dividend_yield": 0.0032}, _paid(ttm=1.564e10), 4.968e12, TODAY) == (0.0032, "yahoo")
+    assert metrics.dividend_yield({"dividend_yield": 0.0}, {}, 1e9, TODAY) == (0.0, "yahoo")
+    assert metrics.dividend_yield({}, _paid(ttm=1e6), 1e8, TODAY) == (None, None)  # no Yahoo yield: none
+
+
+def test_trailing_yield_used_when_forward_missing():
+    assert metrics.dividend_yield({"trailing_dividend_yield": 0.03}, {}, 1e9, TODAY) == (0.03, "yahoo")
+
+
+def test_high_yield_after_recent_split_without_cash_data_is_hidden():
+    stats = {"dividend_yield": 0.4, "last_split_date": _ts(D(2026, 5, 7))}
+    assert metrics.dividend_yield(stats, {}, 1e8, TODAY) == (None, "unconfirmed")
+    stats["last_split_date"] = _ts(D(2020, 8, 31))  # old split: nothing suspicious
+    assert metrics.dividend_yield(stats, {}, 1e8, TODAY) == (0.4, "yahoo")
+
+
+def test_high_yield_with_nothing_paid_is_hidden():
+    # the cash-flow statement explicitly reports 0 dividends paid
+    assert metrics.dividend_yield({"dividend_yield": 0.3}, _paid(ttm=0.0), 1e8, TODAY) == (None, "unconfirmed")
+
+
+def test_dividend_cut_keeps_yahoos_lower_forward_yield():
+    # paid 40 % of the market cap last year, Yahoo's forward yield after a cut is 16 %
+    assert metrics.dividend_yield({"dividend_yield": 0.16}, _paid(ttm=4e7), 1e8, TODAY) == (0.16, "yahoo")
+
+
+def test_stale_dividends_paid_are_ignored():
+    old = statements_from_rows([("A", "dividends_paid", "2022-06-30", -5e6)])
+    assert metrics.dividends_paid_ttm(old, TODAY) is None
+    zero = statements_from_rows([("T", "dividends_paid", "2026-06-30", 0.0)])
+    assert metrics.dividends_paid_ttm(zero, TODAY) == 0
+
+
+def test_implausible_pe_is_hidden():
+    # GMEX: P/E 0.0007 from an EPS of $2,800 while the company lost $8.9M
+    assert metrics.price_earnings({"pe_ttm": 0.000692877}, -8.873e6, 1459904) == (None, "invalid")
+    # CHSN: P/E 0.0036 vs market cap / net income = 13.1 (reverse split 1:100)
+    assert metrics.price_earnings({"pe_ttm": 0.0036471232}, 1.875e5, 2461734) == (None, "invalid")
+    # AZUL, no usable net income to confirm it
+    assert metrics.price_earnings({"pe_ttm": 1.2428857e-05}, None, 1.29e9) == (None, "invalid")
+
+
+def test_pe_below_one_confirmed_by_statements_is_kept():
+    # LX: P/E 0.81, market cap / net income 0.74
+    assert metrics.price_earnings({"pe_ttm": 0.81}, 1.038e9, 7.7e8) == (0.81, "yahoo")
+
+
+def test_ordinary_pes_are_never_second_guessed():
+    # TRS: one-off gain from selling a division makes net income exceed revenue
+    assert metrics.price_earnings({"pe_ttm": 15.56}, 9.052e8, 1.379e9) == (15.56, "yahoo")
+    # SONY: net loss only from discontinued operations (spin-off)
+    assert metrics.price_earnings({"pe_ttm": 19.8}, -2.216e11, 2.0e13) == (19.8, "yahoo")
+    # holding structures / share classes
+    assert metrics.price_earnings({"pe_ttm": 60.4}, 1e8, 1.12e9) == (60.4, "yahoo")
+    assert metrics.price_earnings({"pe_ttm": 39.04}, None, 4.968e12) == (39.04, "yahoo")
+    assert metrics.price_earnings({}, 1e9, 1e10) == (None, None)
+    assert metrics.price_earnings({}, -3.44e8, 1.65e9) == (None, None)
+
+
+def test_compute_drops_peg_only_with_invalid_pe():
+    st = statements_from_rows([("T", "net_income", "2026-06-30", -5e6)])
+    m = metrics.compute(st, {"pe_ttm": 0.0007, "peg_5y": 0.8}, TODAY, market_cap_fin=1e8)
+    assert (m["pe_ttm"], m["pe_basis"], m["peg_5y"]) == (None, "invalid", None)
+    m = metrics.compute(st, {"pe_ttm": 12.0, "peg_5y": 0.8}, TODAY, market_cap_fin=1e8)
+    assert (m["pe_ttm"], m["pe_basis"], m["peg_5y"]) == (12.0, "yahoo", 0.8)
+    st = statements_from_rows([("T", "net_income", "2026-06-30", 1e7), ("T", "net_income_common", "2026-06-30", 9e6)])
+    m = metrics.compute(st, {"pe_ttm": 12.0, "peg_5y": 0.8, "dividend_yield": 0.02}, TODAY, market_cap_fin=1e8)
+    assert (m["pe_ttm"], m["pe_basis"], m["peg_5y"]) == (12.0, "yahoo", 0.8)
+    assert (m["dividend_yield"], m["dividend_basis"]) == (0.02, "yahoo")

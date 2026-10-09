@@ -54,6 +54,7 @@ const COLUMNS = [
   { key: "fcf", label: "Free Cash Flow (TTM)", crit: "fcf", sort: (r) => r.fcfu },
   { key: "peg", label: "PEG (5Y Exp)", crit: "peg", sort: (r) => r.peg },
   { key: "pe",  label: "P/E (TTM)", sort: (r) => r.pe },
+  { key: "dy",  label: "Dividend Yield", sort: (r) => r.dy },
 ];
 
 /* ----------------------------------------------------------------------------
@@ -263,6 +264,22 @@ function growthCell(r, key, critId) {
   return `<td class="${cellClass(r, critId)}">${pctFmt(v)}</td>`;
 }
 
+// Why a value is hidden or replaced (see stockdb/metrics.py: price_earnings, dividend_yield).
+const PE_HIDDEN = "Hidden: Yahoo's P/E is below 1 and does not match market cap ÷ net income (a data error)";
+const DIVIDEND_NOTE = {
+  invalid: "Hidden: Yahoo's dividend is larger than the share price (a data error)",
+  unconfirmed: "Hidden: Yahoo's yield of 15 % or more is not confirmed by the dividends the company actually paid",
+  cash: "Dividends actually paid in the latest reported 12 months ÷ market cap. Yahoo's per-share figure was more than twice as high.",
+};
+
+function dividendCell(r) {
+  const note = DIVIDEND_NOTE[r.dyb];
+  const title = note ? ` title="${esc(note)}"` : "";
+  if (r.dy == null) return `<td class="na"${title}>—</td>`;
+  const text = r.dy === 0 ? "0%" : (r.dy * 100).toFixed(2) + "%";
+  return `<td${title}>${text}${r.dyb === "cash" ? '<span class="approx">*</span>' : ""}</td>`;
+}
+
 function renderBody() {
   const start = state.page * state.pageSize;
   const pageRows = state.filtered.slice(start, start + state.pageSize);
@@ -286,8 +303,9 @@ function renderBody() {
       <td class="${r.roe == null ? "na" : cellClass(r, "roe")}">${pctFmt(r.roe)}</td>
       <td class="${r.de == null ? "na" : cellClass(r, "de")}">${numFmt(r.de)}</td>
       <td class="${fcf.value == null ? "na" : cellClass(r, "fcf")}">${moneyFmt(fcf.value, fcf.currency)}</td>
-      <td class="${r.peg == null ? "na" : cellClass(r, "peg")}"${r.peg == null ? ' title="No analyst growth forecast - PEG is left out of this stock\'s score"' : ""}>${numFmt(r.peg)}</td>
-      <td class="${r.pe == null ? "na" : ""}">${numFmt(r.pe, 1)}</td>
+      <td class="${r.peg == null ? "na" : cellClass(r, "peg")}"${r.peg == null ? ` title="${esc(r.peb === "invalid" ? "Hidden together with the P/E (data error) - PEG is left out of this stock's score" : "No analyst growth forecast - PEG is left out of this stock's score")}"` : ""}>${numFmt(r.peg)}</td>
+      <td class="${r.pe == null ? "na" : ""}"${r.pe == null && r.peb === "invalid" ? ` title="${esc(PE_HIDDEN)}"` : ""}>${numFmt(r.pe, 1)}</td>
+      ${dividendCell(r)}
     </tr>`;
   }).join("");
   $("grid-body").innerHTML = html;
@@ -387,12 +405,12 @@ function syncControls() {
 function downloadView() {
   const head = ["Ticker", "Company", "Market", "Exchange", "Country", "Sector", "Industry", "Market Cap (USD)",
     "Criteria met", "Revenue Growth 1Y %", "Earnings Growth 4Y %", "Revenue Growth 4Y %", "ROE %",
-    "Debt to Equity", "Free Cash Flow TTM (USD)", "PEG 5Y", "P/E TTM"];
+    "Debt to Equity", "Free Cash Flow TTM (USD)", "PEG 5Y", "P/E TTM", "Dividend Yield %"];
   const pct = (v) => (v == null ? "" : (v * 100).toFixed(2));
   const lines = [head];
   for (const r of state.filtered) {
     lines.push([r.s, r.n, r.m, r.x, r.c, r.sec, r.ind, r.mc, `${r._pass}/${r._total}`, pct(r.g1), pct(r.e4),
-      pct(r.g4), pct(r.roe), r.de, r.fcfu, r.peg, r.pe]);
+      pct(r.g4), pct(r.roe), r.de, r.fcfu, r.peg, r.pe, pct(r.dy)]);
   }
   const csv = lines.map((l) => l.map((v) => {
     const s = v == null ? "" : String(v);

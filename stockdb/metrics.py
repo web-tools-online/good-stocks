@@ -121,8 +121,113 @@ def _latest(series: Series, today: dt.date | None, max_age_days: int):
     return d, v
 
 
-def compute(statements: dict, stats: dict, today: dt.date | None = None) -> dict:
-    """Return the metrics stored in the ``metrics`` table (financial-currency units)."""
+# --------------------------------------------------------------------------- validation
+#
+# Yahoo's per-share fields (dividend per share, EPS) are sometimes out of line with the
+# share price, typically after a reverse split, or when a spin-off is recorded as a cash
+# dividend (e.g. GMEX: a $453.60 "dividend" on a $1.94 stock and EPS of $2,800 despite a
+# net loss). Company totals from the financial statements do not have that problem.
+#
+# Checked against 62 ordinary dividend payers, Yahoo's per-share values were right in
+# the normal range and the statement totals were the ones off (scrip dividends paid in
+# shares, partial data, currency effects, one-off gains in net income). So the totals are
+# only used to confirm values that are implausible in the first place - a dividend yield
+# of 15 %+ or a P/E below 1 - never to second-guess ordinary ones.
+
+HIGH_DIVIDEND_YIELD = 0.15  # above this a yield must be confirmed by dividends actually paid
+
+
+def _agree(a: float, b: float, factor: float = 2.0) -> bool:
+    lo, hi = min(a, b), max(a, b)
+    return hi <= factor * lo
+
+
+def _recent_split(stats: dict, today: dt.date | None, days: int = 365) -> bool:
+    ts = stats.get("last_split_date")
+    if not ts or today is None:
+        return False
+    try:
+        split = dt.datetime.fromtimestamp(ts, dt.timezone.utc).date()
+    except (OverflowError, OSError, ValueError):
+        return False
+    return 0 <= (today - split).days <= days
+
+
+def dividends_paid_ttm(statements: dict, today: dt.date | None, max_age_days: int = 550):
+    """Cash paid to (common) shareholders in the latest reported 12 months (trailing, else
+    the latest fiscal year), as a positive number; 0 if the statements show none paid,
+    None if they do not say."""
+    for key in (("T", "dividends_paid_common"), ("T", "dividends_paid"),
+                ("A", "dividends_paid_common"), ("A", "dividends_paid")):
+        _, value = _latest(statements.get(key, []), today, max_age_days)
+        if value is not None:
+            return abs(value)
+    return None
+
+
+def dividend_yield(stats: dict, statements: dict, market_cap_fin, today: dt.date | None = None):
+    """Yahoo's dividend yield with implausible values checked.
+
+    Returns ``(yield, basis)``:
+
+    * ``yahoo``       - Yahoo's yield (forward, else trailing); values below 15 % are
+                        taken as they are, higher ones when the dividends paid confirm them,
+    * ``cash``        - dividends paid / market cap, when Yahoo's 15 %+ yield is more than
+                        twice what the company actually paid,
+    * ``invalid``     - (None) a dividend larger than the share price,
+    * ``unconfirmed`` - (None) a 15 %+ yield while the statements show nothing paid, or
+                        right after a stock split with nothing to check it against.
+    """
+    y = stats.get("dividend_yield")
+    if y is None:
+        y = stats.get("trailing_dividend_yield")
+    if y is None or y < 0:
+        return None, None
+    if y >= 1:
+        return None, "invalid"  # dividend per share above the share price
+    if y < HIGH_DIVIDEND_YIELD:
+        return y, "yahoo"
+
+    paid = dividends_paid_ttm(statements, today)
+    if paid is not None and market_cap_fin and market_cap_fin > 0:
+        cash = paid / market_cap_fin
+        if cash >= y / 2:
+            return y, "yahoo"  # confirmed; or paid more before a cut - Yahoo's forward yield is current
+        if cash > 0:
+            return cash, "cash"
+        return None, "unconfirmed"  # nothing paid at all
+    if _recent_split(stats, today):
+        return None, "unconfirmed"
+    return y, "yahoo"
+
+
+def price_earnings(stats: dict, net_income_ttm, market_cap_fin):
+    """Yahoo's P/E with impossible values removed.
+
+    A P/E below 1 (price worth less than one year of earnings) almost always comes from
+    a broken EPS, e.g. right after a reverse split (GMEX 0.0007, CHSN 0.004). It is kept
+    only when market cap / net income confirms it; P/Es of 1 or more are never touched,
+    because net income can legitimately differ from Yahoo's EPS (one-off gains,
+    discontinued operations). Returns ``(pe, basis)`` with basis ``yahoo`` or
+    ``(None, "invalid")``.
+    """
+    pe = stats.get("pe_ttm")
+    if pe is None or pe <= 0:
+        return None, None
+    if pe >= 1:
+        return pe, "yahoo"
+    if net_income_ttm and net_income_ttm > 0 and market_cap_fin and market_cap_fin > 0 \
+            and _agree(pe, market_cap_fin / net_income_ttm):
+        return pe, "yahoo"
+    return None, "invalid"
+
+
+def compute(statements: dict, stats: dict, today: dt.date | None = None, market_cap_fin=None) -> dict:
+    """Return the metrics stored in the ``metrics`` table (financial-currency units).
+
+    ``market_cap_fin`` is the market capitalisation converted to the financial currency;
+    it is needed to check Yahoo's per-share P/E and dividend yield against company totals.
+    """
     stats = stats or {}
     out: dict = {}
 
@@ -171,7 +276,15 @@ def compute(statements: dict, stats: dict, today: dt.date | None = None) -> dict
         fcf = stats.get("fcf_levered")
     out["fcf_ttm"] = fcf
 
-    out["peg_5y"] = stats.get("peg_5y") if stats.get("peg_5y") is not None else stats.get("peg_ratio")
+    # P/E and dividend yield, checked against company totals (see above).
+    _, ni_common = _latest(statements.get(("T", "net_income_common"), []), today, 500)
+    out["pe_ttm"], out["pe_basis"] = price_earnings(stats, ni_common if ni_common is not None else ni_ttm,
+                                                    market_cap_fin)
+    out["dividend_yield"], out["dividend_basis"] = dividend_yield(stats, statements, market_cap_fin, today)
+
+    # Yahoo's PEG is built on its own P/E: drop it together with a broken P/E.
+    peg = stats.get("peg_5y") if stats.get("peg_5y") is not None else stats.get("peg_ratio")
+    out["peg_5y"] = None if out["pe_basis"] == "invalid" else peg
 
     annual_rev = statements.get(("A", "revenue"), [])
     out["latest_fy_end"] = annual_rev[-1][0].isoformat() if annual_rev else None

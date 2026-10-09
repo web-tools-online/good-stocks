@@ -142,12 +142,14 @@
             <dt>ROE</dt><dd>Net income (TTM) ÷ shareholders' equity.</dd>
             <dt>Debt to Equity</dt><dd>Total debt ÷ shareholders' equity (most recent quarter).</dd>
             <dt>Free Cash Flow (TTM)</dt><dd>Operating cash flow − capital expenditure, last 12 months.</dd>
+            <dt>Dividend Yield</dt><dd>Yahoo Finance's annual dividend ÷ share price: the expected dividend, or the last 12 months' dividends when there is no forecast. A yield of 15 % or more is checked against the dividends the company actually paid. If it is more than twice that amount, the paid amount is shown instead, marked <span class="approx">*</span>.</dd>
             <dt>PEG (5Y expected)</dt><dd>P/E ÷ analysts' expected yearly earnings growth over the next 5 years. Many European companies have no analyst forecast; they are scored without PEG (e.g. 6/6 instead of x/7).</dd>
           </dl>
         </div>
         <div>
           <h3>Data &amp; updates</h3>
           <p>A GitHub Actions workflow runs every Saturday. It collects the ticker lists, pulls the current fundamentals from Yahoo Finance and stores them in a SQLite database. Each run replaces the previous week's numbers. This page is then rebuilt from the database.</p>
+          <p>Yahoo's per-share figures (dividend per share, earnings per share) are occasionally broken, usually right after a reverse split. Implausible values are checked against the company's totals and hidden if those don't back them up: a dividend larger than the share price, a 15 %+ yield the company never paid, a P/E below 1. Ordinary values are shown as Yahoo reports them.</p>
           <p>You can <a href="#" id="db-link">download the database</a> and query it with any SQLite tool.</p>
           <p class="muted small">For information only, not investment advice. The data can be incomplete or wrong; always check a company's own filings.</p>
         </div>

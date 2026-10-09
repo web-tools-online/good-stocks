@@ -77,3 +77,23 @@ def test_parse_timeseries():
 
 def test_parse_timeseries_empty():
     assert parse_timeseries({}) == ([], None, None)
+
+
+def test_parse_dividend_and_split_fields():
+    payload = {"quoteSummary": {"result": [{
+        "price": {"regularMarketPrice": 1.94, "quoteType": "EQUITY"},
+        "summaryDetail": {"dividendYield": 232.61539, "trailingAnnualDividendYield": 170.5263},
+        "defaultKeyStatistics": {"lastSplitDate": 1790553600, "lastSplitFactor": "1:9"},
+    }]}}
+    _, stats = parse_quote_summary(payload)
+    assert stats["dividend_yield"] == pytest.approx(232.61539)
+    assert stats["trailing_dividend_yield"] == pytest.approx(170.5263)
+    assert stats["last_split_date"] == 1790553600 and stats["last_split_factor"] == "1:9"
+    rows, _, _ = parse_timeseries({"timeseries": {"result": [
+        {"meta": {"type": ["trailingCommonStockDividendPaid"]},
+         "trailingCommonStockDividendPaid": [{"asOfDate": "2026-06-30", "reportedValue": {"raw": -1.805e8}}]},
+        {"meta": {"type": ["annualCashDividendsPaid"]},
+         "annualCashDividendsPaid": [{"asOfDate": "2025-12-31", "reportedValue": {"raw": -1.558e8}}]},
+    ]}})
+    assert ["T", "dividends_paid_common", "2026-06-30", -1.805e8] in rows
+    assert ["A", "dividends_paid", "2025-12-31", -1.558e8] in rows
