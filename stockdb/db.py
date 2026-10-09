@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS metrics (
     rev_growth_1y        REAL,
     rev_growth_1y_basis  TEXT,
     rev_growth_5y        REAL,
-    rev_growth_5y_years  INTEGER,           -- fiscal-year span the rate is based on
+    rev_growth_5y_years  INTEGER,           -- fiscal years of data used (5 = exact, fewer = extended)
     earn_growth_5y       REAL,
     earn_growth_5y_years INTEGER,
     roe                  REAL,
@@ -54,6 +54,18 @@ CREATE TABLE IF NOT EXISTS metrics (
     fcf_ttm_usd          REAL,
     peg_5y               REAL,
     latest_fy_end        TEXT
+);
+
+-- Annual revenue and net income, kept only for the 5-year growth rates (at most the
+-- last ANNUAL_FIGURES_KEEP_YEARS fiscal years of active listings). Yahoo reports the
+-- last 4 years; older years come from SEC EDGAR (US) or from earlier weekly runs.
+CREATE TABLE IF NOT EXISTS annual_figures (
+    symbol      TEXT NOT NULL,
+    fy_end      TEXT NOT NULL,   -- fiscal year end date
+    revenue     REAL,
+    net_income  REAL,
+    source      TEXT NOT NULL,   -- yahoo | sec
+    PRIMARY KEY (symbol, fy_end)
 );
 
 -- Current exchange rates used for the *_usd columns.

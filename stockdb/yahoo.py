@@ -121,18 +121,20 @@ def parse_quote_summary(payload: dict) -> tuple[dict, dict]:
     return profile, stats
 
 
-def parse_timeseries(payload: dict) -> tuple[list[list], float | None]:
-    """Return ``(series, peg)``.
+def parse_timeseries(payload: dict) -> tuple[list[list], float | None, str | None]:
+    """Return ``(series, peg, currency)``.
 
     ``series`` is a list of ``[period, item, end_date, value]`` rows where period is
     ``A`` (annual), ``Q`` (quarterly) or ``T`` (trailing twelve months).
     ``peg`` is the latest "PEG ratio (5yr expected)" value, if any.
+    ``currency`` is the currency the statements are reported in.
     """
     results = ((payload or {}).get("timeseries") or {}).get("result") or []
     prefixes = {prefix: code for prefix, (code, _keys) in TIMESERIES_REQUEST.items()}
     rows: list[list] = []
     peg = None
     peg_date = ""
+    currency = None
     for res in results:
         types = (res.get("meta") or {}).get("type") or []
         if not types:
@@ -154,8 +156,10 @@ def parse_timeseries(payload: dict) -> tuple[list[list], float | None]:
                     date = p.get("asOfDate")
                     if value is not None and date:
                         rows.append([code, item, date, value])
+                        if item == "revenue" and not currency:
+                            currency = _str(p.get("currencyCode"))
                 break
-    return rows, peg
+    return rows, peg, currency
 
 
 # --------------------------------------------------------------------------- network
@@ -227,7 +231,7 @@ class YahooClient:
         }
         return parse_quote_summary(self._get_json(QUOTE_SUMMARY_URL.format(symbol=symbol), params))
 
-    def timeseries(self, symbol: str) -> tuple[list[list], float | None]:
+    def timeseries(self, symbol: str) -> tuple[list[list], float | None, str | None]:
         types = [prefix + key for prefix, (_code, keys) in TIMESERIES_REQUEST.items() for key in keys]
         types.append(PEG_KEY)
         now = dt.datetime.now(dt.timezone.utc)

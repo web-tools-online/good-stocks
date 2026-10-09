@@ -13,7 +13,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from . import config, db, fx, metrics
+from . import config, db, fx, metrics, sec
 from .universe import build_universe
 
 log = logging.getLogger(__name__)
@@ -91,9 +91,11 @@ def fetch_one(client, listing: dict) -> dict:
     rec.update(status="ok", profile=profile, stats=stats, series=[])
     if _is_eligible(listing["market"], profile):
         try:
-            series, peg = client.timeseries(listing["symbol"])
+            series, peg, currency = client.timeseries(listing["symbol"])
             rec["series"] = series
             rec["stats"]["peg_5y"] = peg
+            if currency and not profile.get("financial_currency"):
+                profile["financial_currency"] = currency
         except Exception as exc:  # keep the profile and key statistics
             rec["error"] = f"timeseries: {type(exc).__name__}: {exc}"[:300]
     return rec
@@ -194,8 +196,11 @@ def normalize_name(name: str | None) -> str:
     return re.sub(r"\s+", " ", name).strip()
 
 
-def run_build(db_path: str, universe_path: str, raw_patterns: list[str]) -> dict:
-    """Store the current snapshot: listings and their latest metrics (no history is kept)."""
+def run_build(db_path: str, universe_path: str, raw_patterns: list[str], use_sec: bool = True) -> dict:
+    """Store the current snapshot: listings and their latest metrics.
+
+    The only history kept is annual revenue / net income for the 5-year growth rates.
+    """
     con = db.connect(db_path)
     universe = json.loads(Path(universe_path).read_text())
     now = _now()
@@ -237,17 +242,33 @@ def run_build(db_path: str, universe_path: str, raw_patterns: list[str]) -> dict
         currencies.update(c for c in (profile.get("currency"), profile.get("financial_currency")) if c)
     rates = _update_fx(con, currencies)
 
-    # 3. Fetch results -> listing profile + current metrics ---------------------------
+    # 3. Fetch results -> listing profile + annual figures ----------------------------
     counts = {"ok": 0, "not_found": 0, "error": 0}
-    n_metrics = 0
+    active = []
     for rec in records:
         counts[rec["status"]] = counts.get(rec["status"], 0) + 1
-        n_metrics += _apply_record(con, rec, now_s, rates, today)
+        if _apply_record(con, rec, now_s):
+            active.append(rec)
     log.info("applied %d fetch results: %s", len(records), counts)
+
+    # 4. Older annual figures for US companies (SEC EDGAR), only when they are missing --
+    if use_sec and _sec_needed(con, today):
+        try:
+            if _apply_sec(con, now_s):
+                db.set_meta(con, "sec_last_fetch", today.isoformat())
+        except Exception as exc:  # optional data source
+            log.exception("SEC EDGAR failed: %s", exc)
+
+    # 5. Current metrics ------------------------------------------------------------------
+    n_metrics = sum(_store_metrics(con, rec, rates, today) for rec in active)
 
     # Listings that failed this week keep last week's metrics (hidden after MAX_STALE_DAYS).
     con.execute("DELETE FROM metrics WHERE symbol NOT IN (SELECT symbol FROM listings WHERE status = 'active')")
     _dedupe_eu(con, rates, now_s)
+    # Keep annual figures only for active listings and only as far back as needed.
+    cutoff = (today - dt.timedelta(days=365 * config.ANNUAL_FIGURES_KEEP_YEARS)).isoformat()
+    con.execute("DELETE FROM annual_figures WHERE fy_end < ? OR symbol NOT IN "
+                "(SELECT symbol FROM listings WHERE status = 'active')", (cutoff,))
 
     con.execute("INSERT INTO runs (finished, universe_size, fetched_ok, fetched_failed, notes) VALUES (?, ?, ?, ?, ?)",
                 (now_s, len(candidates), counts.get("ok", 0),
@@ -261,8 +282,8 @@ def run_build(db_path: str, universe_path: str, raw_patterns: list[str]) -> dict
     return summary
 
 
-def _apply_record(con, rec: dict, now_s: str, rates: dict, today: dt.date) -> int:
-    """Update the listing from one fetch result; returns 1 if metrics were stored."""
+def _apply_record(con, rec: dict, now_s: str) -> bool:
+    """Update the listing from one fetch result; True if it is an active stock."""
     symbol, status = rec["symbol"], rec["status"]
     if status != "ok":
         con.execute(
@@ -272,7 +293,7 @@ def _apply_record(con, rec: dict, now_s: str, rates: dict, today: dt.date) -> in
             con.execute(
                 "UPDATE listings SET status = 'delisted', status_reason = 'not found on Yahoo Finance', "
                 "status_changed = ? WHERE symbol = ? AND fail_count >= 3", (now_s, symbol))
-        return 0
+        return False
 
     profile = rec.get("profile") or {}
     current = con.execute("SELECT status FROM listings WHERE symbol = ?", (symbol,)).fetchone()
@@ -291,10 +312,33 @@ def _apply_record(con, rec: dict, now_s: str, rates: dict, today: dt.date) -> in
     sets = ", ".join(f"{k} = ?" for k in fields)
     con.execute(f"UPDATE listings SET {sets} WHERE symbol = ?", [*fields.values(), symbol])
     if new_status != "active":
-        return 0
+        return False
 
+    annual: dict[str, dict] = {}
+    for period, item, end, value in rec.get("series") or []:
+        if period == "A" and item in ("revenue", "net_income"):
+            annual.setdefault(end[:10], {})[item] = value
+    for end, values in annual.items():
+        con.execute(
+            "INSERT INTO annual_figures (symbol, fy_end, revenue, net_income, source) VALUES (?, ?, ?, ?, 'yahoo') "
+            "ON CONFLICT (symbol, fy_end) DO UPDATE SET revenue = COALESCE(excluded.revenue, revenue), "
+            "net_income = COALESCE(excluded.net_income, net_income), source = 'yahoo'",
+            (symbol, end, values.get("revenue"), values.get("net_income")))
+    return True
+
+
+def _store_metrics(con, rec: dict, rates: dict, today: dt.date) -> int:
+    """Compute and store the current metrics of one active listing."""
+    symbol = rec["symbol"]
+    profile = rec.get("profile") or {}
     stats = rec.get("stats") or {}
-    rows = [(period, item, end, value) for period, item, end, value in rec.get("series") or []]
+    # Annual revenue / net income come from the database (Yahoo's 4 years + older
+    # years kept from SEC or earlier runs); everything else from the current fetch.
+    rows = [(p, i, e, v) for p, i, e, v in rec.get("series") or []
+            if not (p == "A" and i in ("revenue", "net_income"))]
+    for fy_end, revenue, net_income in con.execute(
+            "SELECT fy_end, revenue, net_income FROM annual_figures WHERE symbol = ?", (symbol,)):
+        rows += [("A", "revenue", fy_end, revenue), ("A", "net_income", fy_end, net_income)]
     m = metrics.compute(metrics.statements_from_rows(rows), stats, today)
     trade_rate = fx.usd_rate(rates, profile.get("currency"))
     fin_rate = fx.usd_rate(rates, profile.get("financial_currency") or profile.get("currency"))
@@ -314,6 +358,47 @@ def _apply_record(con, rec: dict, now_s: str, rates: dict, today: dt.date) -> in
         "fcf_ttm_usd": m["fcf_ttm"] * fin_rate if m["fcf_ttm"] is not None and fin_rate else None,
     })
     return 1
+
+
+def _sec_needed(con, today: dt.date) -> bool:
+    """Download SEC history only if many US companies lack a 5-years-back figure."""
+    last = db.get_meta(con, "sec_last_fetch")
+    if last and (today - dt.date.fromisoformat(last)).days < config.SEC_REFRESH_DAYS:
+        return False
+    rows = con.execute(
+        "SELECT a.symbol, MIN(a.fy_end), MAX(a.fy_end) FROM annual_figures a "
+        "JOIN listings l USING (symbol) WHERE l.market = 'US' AND l.status = 'active' GROUP BY a.symbol").fetchall()
+    if not rows:
+        return False
+    covered = sum(1 for _, first, latest in rows
+                  if (dt.date.fromisoformat(latest) - dt.date.fromisoformat(first)).days >= 365 * 5 - 75)
+    log.info("US companies with 5 years of annual figures: %d of %d", covered, len(rows))
+    return covered < 0.5 * len(rows)
+
+
+def _apply_sec(con, now_s: str) -> int:
+    """Add validated older fiscal years from SEC EDGAR; returns the number of companies matched."""
+    symbols = [r[0] for r in con.execute("SELECT symbol FROM listings WHERE market = 'US' AND status = 'active'")]
+    if not symbols:
+        return 0
+    history = sec.fetch_sec_history(symbols)
+    added = 0
+    for symbol, items in history.items():
+        yahoo = {r[0]: (r[1], r[2]) for r in con.execute(
+            "SELECT fy_end, revenue, net_income FROM annual_figures WHERE symbol = ? AND source = 'yahoo'", (symbol,))}
+        extra: dict[str, dict] = {}
+        for idx, item in enumerate(("revenue", "net_income")):
+            known = {end: v[idx] for end, v in yahoo.items() if v[idx] is not None}
+            for end, value in sec.validated_extension(known, items.get(item, {})).items():
+                extra.setdefault(end, {})[item] = value
+        for end, values in extra.items():
+            con.execute(
+                "INSERT INTO annual_figures (symbol, fy_end, revenue, net_income, source) VALUES (?, ?, ?, ?, 'sec') "
+                "ON CONFLICT (symbol, fy_end) DO NOTHING",
+                (symbol, end, values.get("revenue"), values.get("net_income")))
+            added += 1
+    log.info("SEC: %d companies matched, %d older fiscal years added", len(history), added)
+    return len(history)
 
 
 def _update_fx(con, currencies: set[str]) -> dict[str, float]:

@@ -145,7 +145,9 @@ def print_report(db_path: str, top: int = 15) -> None:
             k = con.execute(f"SELECT COUNT({c}) FROM metrics JOIN listings USING (symbol) WHERE market = ?",
                             (market,)).fetchone()[0]
             parts.append(f"{c}={100 * k // n}%")
-        print(f"  {market} ({n}): {' '.join(parts)}")
+        exact = con.execute("SELECT COUNT(*) FROM metrics JOIN listings USING (symbol) WHERE market = ? "
+                            "AND rev_growth_5y_years = 5", (market,)).fetchone()[0]
+        print(f"  {market} ({n}): {' '.join(parts)} exact5y={100 * exact // n}%")
 
     def pct(v):
         return "" if v is None else f"{v * 100:.1f}"

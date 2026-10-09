@@ -250,9 +250,9 @@ function growthCell(r, key, yearsKey, critId) {
   const v = r[key];
   if (v == null) return `<td class="na">—</td>`;
   const years = r[yearsKey];
-  const title = years != null && years < 5
-    ? ` title="Yearly growth rate over the last ${years} fiscal years, extended to 5 years"` : "";
-  return `<td class="${cellClass(r, critId)}"${title}>${pctFmt(v)}</td>`;
+  const approx = years != null && years < 5;
+  const title = approx ? ` title="Only ${years} years of data so far: the yearly growth rate is extended to 5 years"` : "";
+  return `<td class="${cellClass(r, critId)}"${title}>${approx ? '<span class="approx">≈</span>' : ""}${pctFmt(v)}</td>`;
 }
 
 function renderBody() {

@@ -66,13 +66,14 @@ TIMESERIES = {
 
 
 def test_parse_timeseries():
-    rows, peg = parse_timeseries(TIMESERIES)
+    rows, peg, currency = parse_timeseries(TIMESERIES)
     assert ["A", "revenue", "2023-09-30", 383285000000.0] in rows
     assert ["A", "revenue", "2024-09-30", 391035000000.0] in rows
     assert ["T", "fcf", "2025-06-30", 96184000000.0] in rows
     assert len(rows) == 3
     assert peg == 2.1
+    assert currency == "USD"
 
 
 def test_parse_timeseries_empty():
-    assert parse_timeseries({}) == ([], None)
+    assert parse_timeseries({}) == ([], None, None)

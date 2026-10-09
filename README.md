@@ -12,13 +12,14 @@ It shows the metrics from the HelloStocks screener (revenue and earnings growth,
 1. Merge this branch into `main`.
 2. **Settings → Pages → Build and deployment → Source: _GitHub Actions_.**
 3. **Actions → "Update stock data" → Run workflow** (or wait for Saturday). The first full run takes about an hour. After that the site is live at the address above.
+4. **Settings → Secrets and variables → Actions → Variables → New repository variable:** `SEC_USER_AGENT` = `Your Name your@email.com`. SEC EDGAR, the source of older US annual figures, refuses requests that don't name a contact.
 
 ## What is on the page
 
 | Column | Definition |
 | --- | --- |
 | Revenue Growth (1Y, TTM) | Revenue of the last 12 months vs. the 12 months before. Marked `*` when it is estimated from the latest quarter vs. the same quarter a year earlier. |
-| Earnings Growth (5Y) | Growth in net income over 5 years (see the note below). |
+| Earnings Growth (5Y) | Change in net income between the latest fiscal year and the fiscal year 5 years earlier (see the note below). |
 | Revenue Growth (5Y) | The same for revenue. |
 | ROE | Return on equity: net income (TTM) ÷ shareholders' equity. |
 | Debt to Equity | Total debt ÷ shareholders' equity (most recent quarter). |
@@ -34,7 +35,13 @@ Other features:
 * sorting by any column
 * CSV download of the current view
 
-**About 5-year growth:** only current data is downloaded, with no historical data. Yahoo Finance's current financial statements cover the last 4 fiscal years. The 5-year figure is therefore the yearly growth rate over that span, extended to 5 years.
+**About 5-year growth:** this is the only metric that needs older data, and only two numbers per year are kept for it: annual revenue and net income.
+* Yahoo Finance reports the last 4 fiscal years.
+* For US companies the older years come from SEC EDGAR. This is downloaded only when the database is missing them, normally once.
+* For EU and Czech companies there is no free source of older figures. The database keeps each year's report (at most 7 years back), so their 5-year figure becomes exact year by year.
+* Until a company has 5 years of data, its figure is marked `≈`: the yearly growth rate over the years available, extended to 5 years.
+
+Nothing else is stored historically: no weekly snapshots, prices or quarterly history.
 
 ## How it works
 
@@ -42,7 +49,8 @@ Other features:
 Saturday 04:23 UTC  ──►  universe ──► fetch × 12 shards (parallel) ──► build ──► deploy
                           │             │                               │          │
    Nasdaq Trader lists ───┤             │ Yahoo Finance: current        │          └─► GitHub Pages
-   Yahoo screener (EU/CZ) ┘             │ profile, key stats,           ├─► ECB exchange rates
+   Yahoo screener (EU/CZ) ┘             │ profile, key stats,           ├─► SEC EDGAR (older US years, if missing)
+                                        │                               ├─► ECB exchange rates
                                         │ statements, PEG               ├─► stocks.db  (release asset "data")
                                         │                               └─► site/data/stocks.json + stocks.csv
 ```
@@ -53,7 +61,7 @@ Saturday 04:23 UTC  ──►  universe ──► fetch × 12 shards (parallel) 
   * A company listed on several EU exchanges is kept once, on its home exchange.
 * **Czech**: all shares on the Prague Stock Exchange.
 
-The database is never committed to git, so the repository stays small. Each run downloads the current `stocks.db` from the `data` release, overwrites last week's numbers with the current ones and uploads it again. It does not keep a history. A copy is also kept as a workflow artifact for 30 days. If a ticker fails to download, it keeps last week's numbers. A small `data/summary.json` is committed each week. That commit also stops GitHub from pausing the schedule, which it does after 60 days without repository activity.
+The database is never committed to git, so the repository stays small. Each run downloads the current `stocks.db` from the `data` release, overwrites last week's numbers with the current ones and uploads it again. The only history it keeps is the annual revenue and net income needed for the 5-year growth. A copy is also kept as a workflow artifact for 30 days. If a ticker fails to download, it keeps last week's numbers. A small `data/summary.json` is committed each week. That commit also stops GitHub from pausing the schedule, which it does after 60 days without repository activity.
 
 Pushes to any branch other than `main` run a quick smoke test (15 tickers per market) and publish nothing. Site-only changes on `main` are deployed by the *Deploy website* workflow from the latest database, without a new data refresh.
 
@@ -63,6 +71,7 @@ Pushes to any branch other than `main` run a quick smoke test (15 tickers per ma
 | --- | --- |
 | `listings` | One row per ticker: market, exchange, name, sector, industry, country, currency, status (`active` / `excluded` / `duplicate` / `delisted`) |
 | `metrics` | Current metrics per active ticker (growth rates and ROE as fractions, `*_usd` columns converted with ECB rates) |
+| `annual_figures` | Annual revenue and net income per fiscal year, at most 7 years back, used only for the 5-year growth |
 | `fx_rates`, `runs`, `meta` | Current exchange rates, run log, last update time |
 
 Example (with the `sqlite3` command-line tool or [DB Browser for SQLite](https://sqlitebrowser.org/)):
@@ -99,6 +108,7 @@ python -m http.server --directory _site 8000   # open http://localhost:8000
 Code layout: `stockdb/` holds the Python pipeline:
 * `universe.py`: ticker lists
 * `yahoo.py`: Yahoo Finance client
+* `sec.py`: older US annual figures from SEC EDGAR
 * `metrics.py`: metric formulas
 * `pipeline.py`: the universe, fetch and build steps
 * `export.py`: JSON/CSV for the site
