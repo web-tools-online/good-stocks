@@ -1,16 +1,16 @@
 {
-  "generated": "2026-10-09T11:47:03Z",
-  "stocks": 9517,
+  "generated": "2026-10-10T10:56:14Z",
+  "stocks": 9507,
   "by_market": {
-    "US": 5592,
-    "EU": 3870,
+    "US": 5596,
+    "EU": 3856,
     "CZ": 55
   },
   "last_run": {
-    "id": 2,
-    "finished": "2026-10-09T11:47:03Z",
-    "universe_size": 13461,
-    "fetched_ok": 11333,
+    "id": 3,
+    "finished": "2026-10-10T10:56:14Z",
+    "universe_size": 13421,
+    "fetched_ok": 11409,
     "fetched_failed": 0,
     "notes": null
   }
