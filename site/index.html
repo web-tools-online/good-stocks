@@ -99,7 +99,7 @@
     </div>
 
     <section class="criteria-panel" id="criteria-panel" hidden aria-label="Strategy criteria">
-      <p class="muted small">A stock passes a criterion when its value meets the threshold. Missing data counts as a fail, except PEG: a stock without analysts' growth forecasts is scored without it (e.g. 6/6). Untick a criterion to ignore it. Your settings are saved in this browser.</p>
+      <p class="muted small">A stock passes a criterion when its value meets the threshold. Missing data counts as a fail, except PEG: a stock without analysts' growth forecasts is scored without it (e.g. 7/7). Untick a criterion to ignore it. Your settings are saved in this browser.</p>
       <div id="criteria-list" class="criteria-list"></div>
       <button class="btn btn-quiet" id="criteria-reset">Reset to defaults</button>
     </section>
@@ -142,8 +142,9 @@
             <dt>ROE</dt><dd>Net income (TTM) ÷ shareholders' equity.</dd>
             <dt>Debt to Equity</dt><dd>Total debt ÷ shareholders' equity (most recent quarter).</dd>
             <dt>Free Cash Flow (TTM)</dt><dd>Operating cash flow − capital expenditure, last 12 months.</dd>
+            <dt>FCF Yield</dt><dd>Free cash flow (TTM) ÷ market cap. Checks the price without relying on forecasts. The S&amp;P 500 as a whole yields about 3 %, so the default of 4 % means cheaper than the market.</dd>
             <dt>Dividend Yield</dt><dd>Yahoo Finance's annual dividend ÷ share price: the expected dividend, or the last 12 months' dividends when there is no forecast. A yield of 15 % or more is checked against the dividends the company actually paid. If it is more than twice that amount, the paid amount is shown instead, marked <span class="approx">*</span>.</dd>
-            <dt>PEG (5Y expected)</dt><dd>P/E ÷ analysts' expected yearly earnings growth over the next 5 years. Many European companies have no analyst forecast; they are scored without PEG (e.g. 6/6 instead of x/7).</dd>
+            <dt>PEG (5Y expected)</dt><dd>P/E ÷ analysts' expected yearly earnings growth over the next 5 years. Many European companies have no analyst forecast; they are scored without PEG (e.g. 7/7 instead of x/8).</dd>
           </dl>
         </div>
         <div>

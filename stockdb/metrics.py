@@ -275,6 +275,8 @@ def compute(statements: dict, stats: dict, today: dt.date | None = None, market_
     if fcf is None:
         fcf = stats.get("fcf_levered")
     out["fcf_ttm"] = fcf
+    # FCF yield = free cash flow / market cap: a price check that needs no forecasts.
+    out["fcf_yield"] = fcf / market_cap_fin if fcf is not None and market_cap_fin and market_cap_fin > 0 else None
 
     # P/E and dividend yield, checked against company totals (see above).
     _, ni_common = _latest(statements.get(("T", "net_income_common"), []), today, 500)

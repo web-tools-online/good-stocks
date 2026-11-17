@@ -40,6 +40,8 @@ FIELDS = [
     ("de", "m.debt_to_equity", 3),
     ("fcf", "m.fcf_ttm", 0),
     ("fcfu", "m.fcf_ttm_usd", 0),
+    # rows saved before fcf_yield existed: derive it from the USD columns
+    ("fy", "COALESCE(m.fcf_yield, m.fcf_ttm_usd / NULLIF(m.market_cap_usd, 0))", 4),
     ("peg", "m.peg_5y", 2),
     ("asof", "m.as_of", None),
 ]
@@ -51,7 +53,7 @@ CSV_COLUMNS = [
     ("Revenue Growth (1Y, TTM)", "g1"), ("Earnings Growth (4Y)", "e4"), ("Revenue Growth (4Y)", "g4"),
     ("ROE", "roe"),
     ("Debt to Equity", "de"), ("Free Cash Flow (TTM)", "fcf"), ("Financial Currency", "fcur"),
-    ("Free Cash Flow (TTM, USD)", "fcfu"), ("PEG (5Y expected)", "peg"), ("Data as of", "asof"),
+    ("Free Cash Flow (TTM, USD)", "fcfu"), ("FCF Yield", "fy"), ("PEG (5Y expected)", "peg"), ("Data as of", "asof"),
 ]
 
 

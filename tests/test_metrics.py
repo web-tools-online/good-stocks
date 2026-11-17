@@ -92,6 +92,7 @@ def test_compute_prefers_yahoo_ratios_and_computes_fcf():
     assert m["rev_growth_4y"] == pytest.approx(150 / 110 - 1)  # FY2025 vs FY2022
     assert m["earn_growth_4y"] == pytest.approx(1.0)
     assert m["fcf_ttm"] == 30
+    assert m["fcf_yield"] is None  # no market cap given
     assert m["roe"] == 0.3
     assert m["debt_to_equity"] == pytest.approx(0.26)
     assert m["peg_5y"] == 1.4
@@ -224,3 +225,11 @@ def test_compute_drops_peg_only_with_invalid_pe():
     m = metrics.compute(st, {"pe_ttm": 12.0, "peg_5y": 0.8, "dividend_yield": 0.02}, TODAY, market_cap_fin=1e8)
     assert (m["pe_ttm"], m["pe_basis"], m["peg_5y"]) == (12.0, "yahoo", 0.8)
     assert (m["dividend_yield"], m["dividend_basis"]) == (0.02, "yahoo")
+
+
+def test_fcf_yield_is_fcf_over_market_cap():
+    st = statements_from_rows([("T", "fcf", "2026-06-30", 40)])
+    assert metrics.compute(st, {}, TODAY, market_cap_fin=1000)["fcf_yield"] == pytest.approx(0.04)
+    neg = statements_from_rows([("T", "fcf", "2026-06-30", -10)])
+    assert metrics.compute(neg, {}, TODAY, market_cap_fin=1000)["fcf_yield"] == pytest.approx(-0.01)
+    assert metrics.compute(st, {}, TODAY, market_cap_fin=0)["fcf_yield"] is None

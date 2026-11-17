@@ -10,6 +10,8 @@ const DEFAULT_CRITERIA = [
   { id: "roe", label: "Return on equity",         op: "≥", value: 15, unit: "%" },
   { id: "de",  label: "Debt to equity",           op: "≤", value: 1,  unit: "×" },
   { id: "fcf", label: "Free cash flow (TTM)",     op: ">", value: 0,  unit: "$M" },
+  // FCF ÷ market cap: a price check without forecasts (the S&P 500 yields about 3 %)
+  { id: "fy",  label: "FCF yield",                op: "≥", value: 4,  unit: "%" },
   // optional: a stock with no value (no analyst forecast) is scored without this criterion
   { id: "peg", label: "PEG (5Y expected)",        op: "≤", value: 2,  unit: "×", optional: true },
 ];
@@ -21,11 +23,12 @@ const PASS = {
   roe: (r, t) => r.roe != null && r.roe * 100 >= t,
   de:  (r, t) => r.de != null && r.de >= 0 && r.de <= t,
   fcf: (r, t) => r.fcfu != null ? r.fcfu > t * 1e6 : (t === 0 && r.fcf != null && r.fcf > 0),
+  fy:  (r, t) => r.fy != null && r.fy * 100 >= t,
   peg: (r, t) => r.peg != null && r.peg > 0 && r.peg <= t,
 };
 
 // Value a criterion looks at; an optional criterion is skipped when it is missing.
-const VALUE = { g1: "g1", e4: "e4", g4: "g4", roe: "roe", de: "de", fcf: "fcf", peg: "peg" };
+const VALUE = { g1: "g1", e4: "e4", g4: "g4", roe: "roe", de: "de", fcf: "fcf", fy: "fy", peg: "peg" };
 
 const BASIS_NOTE = {
   ttm: "Last 12 months vs the 12 months before",
@@ -52,6 +55,7 @@ const COLUMNS = [
   { key: "roe", label: "ROE", crit: "roe", sort: (r) => r.roe },
   { key: "de",  label: "Debt to Equity", crit: "de", sort: (r) => r.de },
   { key: "fcf", label: "Free Cash Flow (TTM)", crit: "fcf", sort: (r) => r.fcfu },
+  { key: "fy",  label: "FCF Yield", crit: "fy", sort: (r) => r.fy },
   { key: "peg", label: "PEG (5Y Exp)", crit: "peg", sort: (r) => r.peg },
   { key: "pe",  label: "P/E (TTM)", sort: (r) => r.pe },
   { key: "dy",  label: "Dividend Yield", sort: (r) => r.dy },
@@ -303,6 +307,7 @@ function renderBody() {
       <td class="${r.roe == null ? "na" : cellClass(r, "roe")}">${pctFmt(r.roe)}</td>
       <td class="${r.de == null ? "na" : cellClass(r, "de")}">${numFmt(r.de)}</td>
       <td class="${fcf.value == null ? "na" : cellClass(r, "fcf")}">${moneyFmt(fcf.value, fcf.currency)}</td>
+      ${growthCell(r, "fy", "fy")}
       <td class="${r.peg == null ? "na" : cellClass(r, "peg")}"${r.peg == null ? ` title="${esc(r.peb === "invalid" ? "Hidden together with the P/E (data error) - PEG is left out of this stock's score" : "No analyst growth forecast - PEG is left out of this stock's score")}"` : ""}>${numFmt(r.peg)}</td>
       <td class="${r.pe == null ? "na" : ""}"${r.pe == null && r.peb === "invalid" ? ` title="${esc(PE_HIDDEN)}"` : ""}>${numFmt(r.pe, 1)}</td>
       ${dividendCell(r)}
@@ -405,12 +410,12 @@ function syncControls() {
 function downloadView() {
   const head = ["Ticker", "Company", "Market", "Exchange", "Country", "Sector", "Industry", "Market Cap (USD)",
     "Criteria met", "Revenue Growth 1Y %", "Earnings Growth 4Y %", "Revenue Growth 4Y %", "ROE %",
-    "Debt to Equity", "Free Cash Flow TTM (USD)", "PEG 5Y", "P/E TTM", "Dividend Yield %"];
+    "Debt to Equity", "Free Cash Flow TTM (USD)", "FCF Yield %", "PEG 5Y", "P/E TTM", "Dividend Yield %"];
   const pct = (v) => (v == null ? "" : (v * 100).toFixed(2));
   const lines = [head];
   for (const r of state.filtered) {
     lines.push([r.s, r.n, r.m, r.x, r.c, r.sec, r.ind, r.mc, `${r._pass}/${r._total}`, pct(r.g1), pct(r.e4),
-      pct(r.g4), pct(r.roe), r.de, r.fcfu, r.peg, r.pe, pct(r.dy)]);
+      pct(r.g4), pct(r.roe), r.de, r.fcfu, pct(r.fy), r.peg, r.pe, pct(r.dy)]);
   }
   const csv = lines.map((l) => l.map((v) => {
     const s = v == null ? "" : String(v);
