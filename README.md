@@ -1,7 +1,7 @@
 # Good Stocks
 
 A free stock screener for **all US, EU and Czech listed stocks**, hosted on GitHub Pages.
-It shows the metrics from the HelloStocks screener (revenue and earnings growth, ROE, debt to equity, free cash flow, PEG), and each stock gets an *x/7 criteria* score that you can tune yourself.
+It shows the metrics from the HelloStocks screener (revenue and earnings growth, ROE, debt to equity, free cash flow, PEG), and each stock gets an *x/8 criteria* score that you can tune yourself.
 
 * **Website:** <https://web-tools-online.github.io/good-stocks/>
 * **Database:** SQLite, published as a release asset: [`stocks.db`](https://github.com/web-tools-online/good-stocks/releases/download/data/stocks.db)
@@ -23,6 +23,7 @@ It shows the metrics from the HelloStocks screener (revenue and earnings growth,
 | ROE | Return on equity: net income (TTM) ÷ shareholders' equity. |
 | Debt to Equity | Total debt ÷ shareholders' equity (most recent quarter). |
 | Free Cash Flow (TTM) | Operating cash flow − capital expenditure, last 12 months. |
+| FCF Yield | Free cash flow (TTM) ÷ market cap. A price check that needs no forecasts. |
 | PEG (5Y Exp) | P/E ÷ analysts' expected yearly EPS growth over the next 5 years. |
 | P/E (TTM) | Share price ÷ earnings per share of the last 12 months. |
 | Dividend Yield | Annual dividend ÷ share price (Yahoo's forward dividend, or the last 12 months' if there is no forecast). |
@@ -36,7 +37,7 @@ It shows the metrics from the HelloStocks screener (revenue and earnings growth,
 
 Ordinary values are left as Yahoo reports them. On a sample of 62 dividend payers none of them changed. Net income can legitimately differ from Yahoo's EPS (one-off gains, discontinued operations, share classes), so P/Es of 1 or more are never second-guessed. Run **Actions → "Inspect tickers"** to see the raw Yahoo data behind any ticker.
 
-The default strategy criteria are: revenue growth 1Y ≥ 5 %, earnings growth 4Y ≥ 30 %, revenue growth 4Y ≥ 30 %, ROE ≥ 15 %, debt/equity ≤ 1, FCF > 0 and 0 < PEG ≤ 2. A missing value counts as a fail, except for PEG: stocks without analysts' growth forecasts (common in Europe) are scored on the other six criteria, shown e.g. as 6/6. Open **Show Strategy Criteria** to change thresholds or switch criteria off. Your settings are saved in your browser.
+The default strategy criteria are: revenue growth 1Y ≥ 5 %, earnings growth 4Y ≥ 30 %, revenue growth 4Y ≥ 30 %, ROE ≥ 15 %, debt/equity ≤ 1, FCF > 0, FCF yield ≥ 4 % and 0 < PEG ≤ 2. The S&P 500 as a whole yields about 3 % on free cash flow, so 4 % means cheaper than the market. A missing value counts as a fail, except for PEG: stocks without analysts' growth forecasts (common in Europe) are scored on the other seven criteria, shown e.g. as 7/7. Open **Show Strategy Criteria** to change thresholds or switch criteria off. Your settings are saved in your browser.
 
 Other features:
 * tabs for All / US / EU / Czech

@@ -126,6 +126,7 @@ def test_build_and_export(workdir):
     assert good["earn_growth_4y"] == pytest.approx(1.0)
     assert good["roe"] == 0.25 and good["debt_to_equity"] == pytest.approx(0.3)
     assert good["fcf_ttm"] == pytest.approx(18)
+    assert good["fcf_yield"] == pytest.approx(18 / good["market_cap"])
     assert m["CEZ.PR"]["market_cap_usd"] == pytest.approx(6e12 * 0.045)
     assert m["SAP.DE"]["fcf_ttm_usd"] == pytest.approx(18 * 1.1)
     tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
@@ -140,6 +141,7 @@ def test_build_and_export(workdir):
     rows = [dict(zip(data["fields"], r)) for r in data["rows"]]
     assert rows[0]["s"] == "CEZ.PR"  # sorted by market cap (USD)
     assert data["fx"]["CZK"] == 0.045
+    assert all("fy" in r for r in rows)
     assert (out / "index.html").exists() and (out / "app.js").exists()
     csv_lines = (out / "data" / "stocks.csv").read_text().splitlines()
     assert csv_lines[0].startswith("Ticker,Company,Market")

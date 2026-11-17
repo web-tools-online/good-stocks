@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS metrics (
     debt_to_equity       REAL,
     fcf_ttm              REAL,
     fcf_ttm_usd          REAL,
+    fcf_yield            REAL,              -- fcf_ttm / market cap (both in the financial currency)
     peg_5y               REAL,
     latest_fy_end        TEXT
 );
