@@ -35,7 +35,10 @@ def run_universe(db_path: str, out_path: str, shards: int, limit: int = 0) -> li
 
     con = db.connect(db_path)
     client = YahooClient(rate=2.0)
-    candidates = build_universe(client, limit=limit)
+    known_us = [dict(r) for r in con.execute(
+        "SELECT symbol, market, name, exchange_name FROM listings WHERE market = ? AND status = 'active'",
+        (config.MARKET_US,))]
+    candidates = build_universe(client, limit=limit, known_us=known_us)
 
     now = _now()
     recheck_before = _iso(now - dt.timedelta(days=config.EXCLUSION_RECHECK_DAYS))

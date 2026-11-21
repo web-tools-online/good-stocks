@@ -1,3 +1,5 @@
+import pytest
+
 from stockdb.universe import parse_nasdaq_directory, _sample_per_exchange
 
 NASDAQ = """Symbol|Security Name|Market Category|Test Issue|Financial Status|Round Lot Size|ETF|NextShares
@@ -70,3 +72,36 @@ def test_listing_status():
     assert listing_status("US", {"quote_type": "EQUITY", "country": "China"}) == ("active", None)
     assert listing_status("CZ", {"quote_type": "EQUITY", "country": "Austria"}) == ("active", None)
     assert listing_status("US", {"quote_type": "ETF"})[0] == "excluded"
+
+
+def test_parse_nasdaq_screener():
+    from stockdb.universe import parse_nasdaq_screener
+    payload = {"data": {"rows": [
+        {"symbol": "AAPL", "name": "Apple Inc. Common Stock"},
+        {"symbol": "BRK/B", "name": "Berkshire Hathaway Inc."},
+        {"symbol": "ABR^D", "name": "Arbor Realty Trust 6.375% Series D Preferred"},
+        {"symbol": "AAC.WS", "name": "Ares Acquisition Corp Warrants"},
+        {"symbol": "XYZU", "name": "XYZ Acquisition Corp Units"},
+    ]}}
+    rows = parse_nasdaq_screener(payload, "NYSE")
+    assert [(r["symbol"], r["name"], r["exchange_name"]) for r in rows] == [
+        ("AAPL", "Apple Inc.", "NYSE"), ("BRK-B", "Berkshire Hathaway Inc.", "NYSE")]
+
+
+def test_us_listings_fall_back(monkeypatch):
+    from stockdb import universe
+
+    def down():
+        raise RuntimeError("HTTP 503")
+
+    monkeypatch.setattr(universe, "_nasdaq_trader_listings", down)
+    monkeypatch.setattr(universe, "_nasdaq_screener_listings",
+                        lambda: [{"symbol": f"S{i}", "market": "US", "name": None, "exchange_name": "NYSE"}
+                                 for i in range(1500)])
+    assert len(universe.us_listings()) == 1500
+
+    monkeypatch.setattr(universe, "_nasdaq_screener_listings", down)
+    known = [{"symbol": "AAPL", "market": "US", "name": "Apple Inc.", "exchange_name": "NASDAQ"}]
+    assert universe.us_listings(known) == known
+    with pytest.raises(RuntimeError):
+        universe.us_listings([])

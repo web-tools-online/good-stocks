@@ -57,16 +57,38 @@ def parse_nasdaq_directory(text: str, kind: str) -> list[dict]:
     return out
 
 
+_SCREENER_SYMBOL_OK = re.compile(r"^[A-Z0-9]+(/[A-Z])?$")  # BRK/B; skips ABR^D (preferred), AAC.WS
+
+
+def parse_nasdaq_screener(payload: dict, exchange_name: str) -> list[dict]:
+    """Parse a response of the nasdaq.com stock screener API (fallback source)."""
+    rows = (((payload or {}).get("data") or {}).get("rows")) or []
+    out = []
+    for row in rows:
+        symbol = (row.get("symbol") or "").strip()
+        name = (row.get("name") or "").strip()
+        if not _SCREENER_SYMBOL_OK.match(symbol) or _EXCLUDE_NAME.search(name):
+            continue
+        out.append({
+            "symbol": symbol.replace("/", "-"),
+            "market": config.MARKET_US,
+            "name": _clean_security_name(re.sub(r"\s+(Common Stock|Ordinary Shares|American Depositary Shares)\b.*$",
+                                                "", name)) or name,
+            "exchange_name": exchange_name,
+        })
+    return out
+
+
 def _clean_security_name(name: str) -> str:
     # "Apple Inc. - Common Stock" -> "Apple Inc."
     return re.split(r"\s+-\s+", name, maxsplit=1)[0].strip()
 
 
-def _http_get_text(url: str) -> str:
+def _http_get_text(url: str, attempts: int = 4) -> str:
     from curl_cffi import requests
 
     last = None
-    for attempt in range(4):
+    for attempt in range(attempts):
         try:
             resp = requests.get(url, impersonate="chrome", timeout=60)
             if resp.status_code == 200:
@@ -78,9 +100,41 @@ def _http_get_text(url: str) -> str:
     raise RuntimeError(f"GET {url} failed: {last}")
 
 
-def us_listings() -> list[dict]:
+def _nasdaq_trader_listings() -> list[dict]:
     rows = parse_nasdaq_directory(_http_get_text(config.NASDAQ_LISTED_URL), "nasdaq")
-    rows += parse_nasdaq_directory(_http_get_text(config.OTHER_LISTED_URL), "other")
+    return rows + parse_nasdaq_directory(_http_get_text(config.OTHER_LISTED_URL), "other")
+
+
+def _nasdaq_screener_listings() -> list[dict]:
+    import json
+
+    rows = []
+    for code, name in config.NASDAQ_SCREENER_EXCHANGES.items():
+        text = _http_get_text(config.NASDAQ_SCREENER_URL.format(exchange=code))
+        rows += parse_nasdaq_screener(json.loads(text), name)
+    return rows
+
+
+def us_listings(known: list[dict] | None = None) -> list[dict]:
+    """All US common stocks. Sources in order: the Nasdaq Trader symbol directory, the
+    nasdaq.com screener API, and finally ``known`` (last week's US listings), so that an
+    outage of one website does not stop the weekly update."""
+    rows = []
+    for source in (_nasdaq_trader_listings, _nasdaq_screener_listings):
+        try:
+            rows = source()
+        except Exception as exc:
+            log.warning("US listings from %s failed: %s", source.__name__, exc)
+            continue
+        if len(rows) >= 1000:
+            break
+        log.warning("US listings from %s: only %d rows - trying the next source", source.__name__, len(rows))
+    else:
+        if known and len(known) > len(rows):
+            log.warning("using last week's %d US listings", len(known))
+            rows = known
+        elif not rows:
+            raise RuntimeError("no source for the US listings is available")
     seen, out = set(), []
     for r in rows:
         if r["symbol"] not in seen:
@@ -124,14 +178,15 @@ def screener_listings(client, market: str, exchanges: dict[str, list[str]],
     return out
 
 
-def build_universe(client, markets=config.MARKETS, limit: int = 0) -> list[dict]:
+def build_universe(client, markets=config.MARKETS, limit: int = 0,
+                   known_us: list[dict] | None = None) -> list[dict]:
     """Return ``[{symbol, market, name, exchange, exchange_name}]`` for all markets.
 
     ``limit`` > 0 keeps only the first N listings per market (used for smoke tests).
     """
     universe: list[dict] = []
     if config.MARKET_US in markets:
-        us = us_listings()
+        us = us_listings(known_us)
         log.info("US: %d listings", len(us))
         universe += us[:limit] if limit else us
     if config.MARKET_EU in markets:

@@ -10,6 +10,9 @@ MARKETS = (MARKET_US, MARKET_EU, MARKET_CZ)
 # NYSE Arca and Cboe listed securities).
 NASDAQ_LISTED_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt"
 OTHER_LISTED_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"
+# Fallback when nasdaqtrader.com is down: the stock screener API behind nasdaq.com.
+NASDAQ_SCREENER_URL = "https://api.nasdaq.com/api/screener/stocks?tableonly=true&download=true&exchange={exchange}"
+NASDAQ_SCREENER_EXCHANGES = {"nasdaq": "NASDAQ", "nyse": "NYSE", "amex": "NYSE American"}
 
 # EU universe: Yahoo Finance screener, one query per exchange (Yahoo exchange codes).
 # Only the main venue of each EU member state that Yahoo covers is used, so that the
