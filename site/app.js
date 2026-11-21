@@ -14,9 +14,9 @@ const DEFAULT_CRITERIA = [
   { id: "fy",  label: "FCF yield",                op: "≥", value: 4,  unit: "%" },
   // optional: a stock with no value (no analyst forecast) is scored without this criterion
   { id: "peg", label: "PEG (5Y expected)",        op: "≤", value: 2,  unit: "×", optional: true },
-  // off by default; optional because banks and insurers have neither value
-  { id: "am",  label: "Acquirer's multiple",      op: "≤", value: 10, unit: "×", optional: true, off: true },
-  { id: "fs",  label: "Piotroski F-score",        op: "≥", value: 7,  unit: "/9", optional: true, off: true },
+  // off by default; a missing value (operating loss, too little data) counts as a fail
+  { id: "am",  label: "Acquirer's multiple",      op: "≤", value: 10, unit: "×", off: true },
+  { id: "fs",  label: "Piotroski F-score",        op: "≥", value: 7,  unit: "/9", off: true },
 ];
 
 const PASS = {
@@ -211,6 +211,7 @@ function scoreRows() {
 // Criteria still missing for a row to be shown with the current "Criteria met" filter.
 function meetsCriteriaFilter(r) {
   if (state.critFilter === "0") return true;
+  if (r._total === 0) return false; // nothing could be checked (e.g. only PEG enabled and no PEG)
   const allowedMisses = state.critFilter === "all" ? 0 : -Number(state.critFilter);
   return r._total - r._pass <= allowedMisses;
 }
