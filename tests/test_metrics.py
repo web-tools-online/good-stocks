@@ -233,3 +233,66 @@ def test_fcf_yield_is_fcf_over_market_cap():
     neg = statements_from_rows([("T", "fcf", "2026-06-30", -10)])
     assert metrics.compute(neg, {}, TODAY, market_cap_fin=1000)["fcf_yield"] == pytest.approx(-0.01)
     assert metrics.compute(st, {}, TODAY, market_cap_fin=0)["fcf_yield"] is None
+
+
+def _fy(item, values, period="A"):
+    return {(period, item): annual(values)}
+
+
+def _f_score_statements(**override):
+    st = {}
+    base = {
+        "total_assets": [1000, 1000, 1000], "net_income": [50, 50, 80], "ocf": [60, 60, 100],
+        "revenue": [900, 900, 1000], "gross_profit": [300, 300, 350], "current_assets": [400, 400, 500],
+        "current_liabilities": [300, 300, 300], "long_term_debt": [200, 200, 150], "shares": [100, 100, 99],
+    }
+    base.update(override)
+    for item, values in base.items():
+        st.update(_fy(item, values))
+    return st
+
+
+def test_f_score_all_tests_pass():
+    assert metrics.piotroski_f_score(_f_score_statements()) == (9, "111111111")
+
+
+def test_f_score_all_tests_fail():
+    st = _f_score_statements(net_income=[50, 50, -10], ocf=[60, 60, -20], revenue=[900, 1000, 900],
+                             gross_profit=[300, 350, 250], current_assets=[400, 500, 400],
+                             long_term_debt=[200, 150, 300], shares=[100, 100, 110])
+    assert metrics.piotroski_f_score(st) == (0, "000000000")
+
+
+def test_f_score_without_long_term_debt_and_from_cost_of_revenue():
+    st = _f_score_statements()
+    del st[("A", "long_term_debt")], st[("A", "gross_profit")]
+    st.update(_fy("cost_of_revenue", [600, 600, 650]))
+    score, detail = metrics.piotroski_f_score(st)
+    assert detail[4] == "1" and detail[7] == "1" and score == 9
+
+
+def test_f_score_needs_all_nine_tests():
+    st = _f_score_statements()
+    del st[("A", "current_assets")]  # e.g. a bank
+    assert metrics.piotroski_f_score(st) == (None, None)
+    assert metrics.piotroski_f_score(_f_score_statements(), today=D(2028, 1, 1)) == (None, None)  # stale
+
+
+def test_acquirers_multiple():
+    st = {("T", "operating_income"): [(D(2025, 12, 31), 100.0)], ("Q", "total_debt"): [(D(2025, 12, 31), 300.0)],
+          ("Q", "cash"): [(D(2025, 12, 31), 200.0)], ("Q", "minority_interest"): [(D(2025, 12, 31), 50.0)],
+          ("Q", "equity"): [(D(2025, 12, 31), 500.0)]}
+    am, ev, op = metrics.acquirers_multiple(st, 1000)
+    assert (ev, op) == (1150, 100) and am == pytest.approx(11.5)
+    # debt-free company: Yahoo has no TotalDebt item
+    del st[("Q", "total_debt")]
+    assert metrics.acquirers_multiple(st, 1000)[0] == pytest.approx(8.5)
+
+
+def test_acquirers_multiple_not_meaningful():
+    st = {("T", "operating_income"): [(D(2025, 12, 31), -5.0)], ("Q", "equity"): [(D(2025, 12, 31), 500.0)]}
+    assert metrics.acquirers_multiple(st, 1000)[0] is None  # operating loss
+    st[("T", "operating_income")] = [(D(2025, 12, 31), 50.0)]
+    st[("Q", "cash")] = [(D(2025, 12, 31), 2000.0)]
+    assert metrics.acquirers_multiple(st, 1000)[0] is None  # negative EV
+    assert metrics.acquirers_multiple({("T", "operating_income"): [(D(2025, 12, 31), 50.0)]}, 1000)[0] is None

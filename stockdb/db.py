@@ -54,6 +54,11 @@ CREATE TABLE IF NOT EXISTS metrics (
     fcf_ttm_usd          REAL,
     fcf_yield            REAL,              -- fcf_ttm / market cap (both in the financial currency)
     peg_5y               REAL,
+    enterprise_value     REAL,              -- market cap + debt + preferred + minority interest - cash
+    operating_income_ttm REAL,
+    acquirers_multiple   REAL,              -- enterprise_value / operating_income_ttm (both positive)
+    f_score              INTEGER,           -- Piotroski F-score 0-9 (latest vs previous fiscal year)
+    f_score_detail       TEXT,              -- nine 1/0 flags, order in metrics.F_SCORE_TESTS
     latest_fy_end        TEXT
 );
 

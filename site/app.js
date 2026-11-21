@@ -14,6 +14,9 @@ const DEFAULT_CRITERIA = [
   { id: "fy",  label: "FCF yield",                op: "≥", value: 4,  unit: "%" },
   // optional: a stock with no value (no analyst forecast) is scored without this criterion
   { id: "peg", label: "PEG (5Y expected)",        op: "≤", value: 2,  unit: "×", optional: true },
+  // off by default; optional because banks and insurers have neither value
+  { id: "am",  label: "Acquirer's multiple",      op: "≤", value: 10, unit: "×", optional: true, off: true },
+  { id: "fs",  label: "Piotroski F-score",        op: "≥", value: 7,  unit: "/9", optional: true, off: true },
 ];
 
 const PASS = {
@@ -25,10 +28,12 @@ const PASS = {
   fcf: (r, t) => r.fcfu != null ? r.fcfu > t * 1e6 : (t === 0 && r.fcf != null && r.fcf > 0),
   fy:  (r, t) => r.fy != null && r.fy * 100 >= t,
   peg: (r, t) => r.peg != null && r.peg > 0 && r.peg <= t,
+  am:  (r, t) => r.am != null && r.am > 0 && r.am <= t,
+  fs:  (r, t) => r.fs != null && r.fs >= t,
 };
 
 // Value a criterion looks at; an optional criterion is skipped when it is missing.
-const VALUE = { g1: "g1", e4: "e4", g4: "g4", roe: "roe", de: "de", fcf: "fcf", fy: "fy", peg: "peg" };
+const VALUE = { g1: "g1", e4: "e4", g4: "g4", roe: "roe", de: "de", fcf: "fcf", fy: "fy", peg: "peg", am: "am", fs: "fs" };
 
 const BASIS_NOTE = {
   ttm: "Last 12 months vs the 12 months before",
@@ -57,6 +62,8 @@ const COLUMNS = [
   { key: "fcf", label: "Free Cash Flow (TTM)", crit: "fcf", sort: (r) => r.fcfu },
   { key: "fy",  label: "FCF Yield", crit: "fy", sort: (r) => r.fy },
   { key: "peg", label: "PEG (5Y Exp)", crit: "peg", sort: (r) => r.peg },
+  { key: "am",  label: "Acquirer's Multiple", crit: "am", sort: (r) => r.am },
+  { key: "fs",  label: "F-Score", crit: "fs", sort: (r) => r.fs },
   { key: "pe",  label: "P/E (TTM)", sort: (r) => r.pe },
   { key: "dy",  label: "Dividend Yield", sort: (r) => r.dy },
 ];
@@ -100,7 +107,8 @@ function loadCriteria() {
   const saved = load("gs-criteria-v2", null) || {};
   return DEFAULT_CRITERIA.map((c) => {
     const s = saved[c.id] || {};
-    return { ...c, enabled: s.enabled !== false, value: typeof s.value === "number" ? s.value : c.value };
+    const enabled = typeof s.enabled === "boolean" ? s.enabled : !c.off;
+    return { ...c, enabled, value: typeof s.value === "number" ? s.value : c.value };
   });
 }
 function saveCriteria() {
@@ -284,6 +292,28 @@ function dividendCell(r) {
   return `<td${title}>${text}${r.dyb === "cash" ? '<span class="approx">*</span>' : ""}</td>`;
 }
 
+const F_SCORE_TESTS = [
+  "Positive return on assets", "Positive operating cash flow", "Higher return on assets",
+  "Operating cash flow above net income", "Lower long-term debt / assets", "Higher current ratio",
+  "No new shares issued", "Higher gross margin", "Higher asset turnover",
+];
+
+function fScoreCell(r) {
+  if (r.fs == null) {
+    return `<td class="na" title="${esc("Not enough data for all nine tests (usual for banks and insurers)")}">—</td>`;
+  }
+  const d = r.fsd || "";
+  const title = d.length === 9 ? F_SCORE_TESTS.map((t, i) => (d[i] === "1" ? "✓ " : "✗ ") + t).join("\n") : "";
+  return `<td class="${cellClass(r, "fs")}" title="${esc(title)}">${r.fs}/9</td>`;
+}
+
+function amCell(r) {
+  if (r.am == null) {
+    return `<td class="na" title="${esc("Operating income or enterprise value is not positive, or the data is missing")}">—</td>`;
+  }
+  return `<td class="${cellClass(r, "am")}">${numFmt(r.am, 1)}</td>`;
+}
+
 function renderBody() {
   const start = state.page * state.pageSize;
   const pageRows = state.filtered.slice(start, start + state.pageSize);
@@ -309,6 +339,8 @@ function renderBody() {
       <td class="${fcf.value == null ? "na" : cellClass(r, "fcf")}">${moneyFmt(fcf.value, fcf.currency)}</td>
       ${growthCell(r, "fy", "fy")}
       <td class="${r.peg == null ? "na" : cellClass(r, "peg")}"${r.peg == null ? ` title="${esc(r.peb === "invalid" ? "Hidden together with the P/E (data error) - PEG is left out of this stock's score" : "No analyst growth forecast - PEG is left out of this stock's score")}"` : ""}>${numFmt(r.peg)}</td>
+      ${amCell(r)}
+      ${fScoreCell(r)}
       <td class="${r.pe == null ? "na" : ""}"${r.pe == null && r.peb === "invalid" ? ` title="${esc(PE_HIDDEN)}"` : ""}>${numFmt(r.pe, 1)}</td>
       ${dividendCell(r)}
     </tr>`;
@@ -410,12 +442,12 @@ function syncControls() {
 function downloadView() {
   const head = ["Ticker", "Company", "Market", "Exchange", "Country", "Sector", "Industry", "Market Cap (USD)",
     "Criteria met", "Revenue Growth 1Y %", "Earnings Growth 4Y %", "Revenue Growth 4Y %", "ROE %",
-    "Debt to Equity", "Free Cash Flow TTM (USD)", "FCF Yield %", "PEG 5Y", "P/E TTM", "Dividend Yield %"];
+    "Debt to Equity", "Free Cash Flow TTM (USD)", "FCF Yield %", "PEG 5Y", "Acquirer's Multiple", "F-Score", "P/E TTM", "Dividend Yield %"];
   const pct = (v) => (v == null ? "" : (v * 100).toFixed(2));
   const lines = [head];
   for (const r of state.filtered) {
     lines.push([r.s, r.n, r.m, r.x, r.c, r.sec, r.ind, r.mc, `${r._pass}/${r._total}`, pct(r.g1), pct(r.e4),
-      pct(r.g4), pct(r.roe), r.de, r.fcfu, pct(r.fy), r.peg, r.pe, pct(r.dy)]);
+      pct(r.g4), pct(r.roe), r.de, r.fcfu, pct(r.fy), r.peg, r.am, r.fs, r.pe, pct(r.dy)]);
   }
   const csv = lines.map((l) => l.map((v) => {
     const s = v == null ? "" : String(v);
@@ -468,7 +500,7 @@ function bind() {
     if (state.sortKey === key) state.sortDir = -state.sortDir;
     else {
       state.sortKey = key;
-      state.sortDir = ["s", "n", "sec", "de", "peg", "pe"].includes(key) ? 1 : -1;
+      state.sortDir = ["s", "n", "sec", "de", "peg", "am", "pe"].includes(key) ? 1 : -1;
     }
     sortRows();
     state.page = 0;
@@ -492,7 +524,7 @@ function bind() {
     refresh();
   });
   $("criteria-reset").addEventListener("click", () => {
-    state.criteria = DEFAULT_CRITERIA.map((c) => ({ ...c, enabled: true }));
+    state.criteria = DEFAULT_CRITERIA.map((c) => ({ ...c, enabled: !c.off }));
     saveCriteria();
     renderCriteria();
     scoreRows();

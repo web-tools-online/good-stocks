@@ -141,7 +141,7 @@ def test_build_and_export(workdir):
     rows = [dict(zip(data["fields"], r)) for r in data["rows"]]
     assert rows[0]["s"] == "CEZ.PR"  # sorted by market cap (USD)
     assert data["fx"]["CZK"] == 0.045
-    assert all("fy" in r for r in rows)
+    assert all("fy" in r and "am" in r and "fs" in r for r in rows)
     assert (out / "index.html").exists() and (out / "app.js").exists()
     csv_lines = (out / "data" / "stocks.csv").read_text().splitlines()
     assert csv_lines[0].startswith("Ticker,Company,Market")

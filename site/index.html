@@ -99,7 +99,7 @@
     </div>
 
     <section class="criteria-panel" id="criteria-panel" hidden aria-label="Strategy criteria">
-      <p class="muted small">A stock passes a criterion when its value meets the threshold. Missing data counts as a fail, except PEG: a stock without analysts' growth forecasts is scored without it (e.g. 7/7). Untick a criterion to ignore it. Your settings are saved in this browser.</p>
+      <p class="muted small">A stock passes a criterion when its value meets the threshold. Missing data counts as a fail, except PEG: a stock without analysts' growth forecasts is scored without it (e.g. 7/7). The acquirer's multiple and the F-score are switched off by default; when switched on, a stock without the value (typically a bank or insurer) is scored without them. Untick a criterion to ignore it. Your settings are saved in this browser.</p>
       <div id="criteria-list" class="criteria-list"></div>
       <button class="btn btn-quiet" id="criteria-reset">Reset to defaults</button>
     </section>
@@ -145,6 +145,8 @@
             <dt>FCF Yield</dt><dd>Free cash flow (TTM) ÷ market cap. Checks the price without relying on forecasts. The S&amp;P 500 as a whole yields about 3 %, so the default of 4 % means cheaper than the market.</dd>
             <dt>Dividend Yield</dt><dd>Yahoo Finance's annual dividend ÷ share price: the expected dividend, or the last 12 months' dividends when there is no forecast. A yield of 15 % or more is checked against the dividends the company actually paid. If it is more than twice that amount, the paid amount is shown instead, marked <span class="approx">*</span>.</dd>
             <dt>PEG (5Y expected)</dt><dd>P/E ÷ analysts' expected yearly earnings growth over the next 5 years. Many European companies have no analyst forecast; they are scored without PEG (e.g. 7/7 instead of x/8).</dd>
+            <dt>Acquirer's Multiple</dt><dd>Enterprise value ÷ operating income (TTM), as used by Tobias Carlisle. Enterprise value = market cap + debt + preferred stock + minority interest − cash and short-term investments. It shows what a buyer of the whole company pays for its operating earnings; lower is cheaper. Not shown when operating income or enterprise value is not positive (it means little for banks and insurers).</dd>
+            <dt>F-Score</dt><dd>Joseph Piotroski's 0–9 score of financial health, comparing the latest fiscal year with the one before. One point each for: positive return on assets, positive operating cash flow, a higher return on assets, operating cash flow above net income, lower long-term debt relative to assets, a higher current ratio, no new shares issued, a higher gross margin and a higher asset turnover. 8–9 is strong, 0–2 weak. Hover a value to see which tests passed. Shown only when all nine tests can be evaluated.</dd>
           </dl>
         </div>
         <div>

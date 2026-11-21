@@ -37,16 +37,39 @@ TIMESERIES_ITEMS = {
     "TotalDebt": "total_debt",
     "CashDividendsPaid": "dividends_paid",
     "CommonStockDividendPaid": "dividends_paid_common",
+    # Acquirer's multiple (enterprise value / operating income)
+    "OperatingIncome": "operating_income",
+    "EBIT": "ebit",
+    "CashCashEquivalentsAndShortTermInvestments": "cash",
+    "CashAndCashEquivalents": "cash_only",
+    "MinorityInterest": "minority_interest",
+    "PreferredStockEquity": "preferred_equity",
+    # Piotroski F-score
+    "TotalAssets": "total_assets",
+    "CurrentAssets": "current_assets",
+    "CurrentLiabilities": "current_liabilities",
+    "LongTermDebt": "long_term_debt",
+    "GrossProfit": "gross_profit",
+    "CostOfRevenue": "cost_of_revenue",
+    "OrdinarySharesNumber": "shares",
+    "DilutedAverageShares": "diluted_shares",
 }
+# Balance sheet items needed for the enterprise value (latest quarter, else fiscal year).
+EV_KEYS = ["CashCashEquivalentsAndShortTermInvestments", "CashAndCashEquivalents", "MinorityInterest",
+           "PreferredStockEquity"]
+# Two consecutive fiscal years of these give the nine Piotroski tests.
+F_SCORE_KEYS = ["TotalAssets", "CurrentAssets", "CurrentLiabilities", "LongTermDebt", "GrossProfit",
+                "CostOfRevenue", "OrdinarySharesNumber", "DilutedAverageShares"]
 TIMESERIES_REQUEST = {
     # prefix -> (period code stored in the DB, keys)
     "annual": ("A", ["TotalRevenue", "NetIncome", "NetIncomeCommonStockholders", "DilutedEPS",
                      "FreeCashFlow", "OperatingCashFlow", "CapitalExpenditure",
-                     "StockholdersEquity", "TotalDebt", "CashDividendsPaid", "CommonStockDividendPaid"]),
-    "quarterly": ("Q", ["TotalRevenue", "NetIncome", "StockholdersEquity", "TotalDebt"]),
+                     "StockholdersEquity", "TotalDebt", "CashDividendsPaid", "CommonStockDividendPaid",
+                     "OperatingIncome", "EBIT", *EV_KEYS, *F_SCORE_KEYS]),
+    "quarterly": ("Q", ["TotalRevenue", "NetIncome", "StockholdersEquity", "TotalDebt", *EV_KEYS]),
     "trailing": ("T", ["TotalRevenue", "NetIncome", "NetIncomeCommonStockholders",
                        "FreeCashFlow", "OperatingCashFlow", "CapitalExpenditure",
-                       "CashDividendsPaid", "CommonStockDividendPaid"]),
+                       "CashDividendsPaid", "CommonStockDividendPaid", "OperatingIncome", "EBIT"]),
 }
 PEG_KEY = "trailingPegRatio"
 

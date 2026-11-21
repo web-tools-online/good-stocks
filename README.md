@@ -25,6 +25,8 @@ It shows the metrics from the HelloStocks screener (revenue and earnings growth,
 | Free Cash Flow (TTM) | Operating cash flow − capital expenditure, last 12 months. |
 | FCF Yield | Free cash flow (TTM) ÷ market cap. A price check that needs no forecasts. |
 | PEG (5Y Exp) | P/E ÷ analysts' expected yearly EPS growth over the next 5 years. |
+| Acquirer's Multiple | Enterprise value ÷ operating income (TTM). EV = market cap + total debt + preferred stock + minority interest − cash and short-term investments. Lower is cheaper. Empty when operating income or EV is not positive. |
+| F-Score | Piotroski F-score, 0–9: one point each for positive ROA, positive operating cash flow, higher ROA, operating cash flow > net income, lower long-term debt / assets, higher current ratio, no new shares, higher gross margin, higher asset turnover (latest fiscal year vs. the one before). Empty unless all nine tests can be evaluated. |
 | P/E (TTM) | Share price ÷ earnings per share of the last 12 months. |
 | Dividend Yield | Annual dividend ÷ share price (Yahoo's forward dividend, or the last 12 months' if there is no forecast). |
 
@@ -37,7 +39,7 @@ It shows the metrics from the HelloStocks screener (revenue and earnings growth,
 
 Ordinary values are left as Yahoo reports them. On a sample of 62 dividend payers none of them changed. Net income can legitimately differ from Yahoo's EPS (one-off gains, discontinued operations, share classes), so P/Es of 1 or more are never second-guessed. Run **Actions → "Inspect tickers"** to see the raw Yahoo data behind any ticker.
 
-The default strategy criteria are: revenue growth 1Y ≥ 5 %, earnings growth 4Y ≥ 30 %, revenue growth 4Y ≥ 30 %, ROE ≥ 15 %, debt/equity ≤ 1, FCF > 0, FCF yield ≥ 4 % and 0 < PEG ≤ 2. The S&P 500 as a whole yields about 3 % on free cash flow, so 4 % means cheaper than the market. A missing value counts as a fail, except for PEG: stocks without analysts' growth forecasts (common in Europe) are scored on the other seven criteria, shown e.g. as 7/7. Open **Show Strategy Criteria** to change thresholds or switch criteria off. Your settings are saved in your browser.
+The default strategy criteria are: revenue growth 1Y ≥ 5 %, earnings growth 4Y ≥ 30 %, revenue growth 4Y ≥ 30 %, ROE ≥ 15 %, debt/equity ≤ 1, FCF > 0, FCF yield ≥ 4 % and 0 < PEG ≤ 2. The S&P 500 as a whole yields about 3 % on free cash flow, so 4 % means cheaper than the market. A missing value counts as a fail, except for PEG: stocks without analysts' growth forecasts (common in Europe) are scored on the other seven criteria, shown e.g. as 7/7. Two more criteria, acquirer's multiple ≤ 10 and F-score ≥ 7, are available but switched off by default; like PEG, a stock without the value is scored without them. Open **Show Strategy Criteria** to change thresholds or switch criteria off. Your settings are saved in your browser.
 
 Other features:
 * tabs for All / US / EU / Czech

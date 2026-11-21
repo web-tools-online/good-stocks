@@ -222,6 +222,115 @@ def price_earnings(stats: dict, net_income_ttm, market_cap_fin):
     return None, "invalid"
 
 
+# --------------------------------------------------------------------------- value & quality
+
+def _balance(statements: dict, item: str, today: dt.date | None):
+    """Latest balance-sheet value: most recent quarter, else the latest fiscal year."""
+    _, v = _latest(statements.get(("Q", item), []), today, 400)
+    if v is None:
+        _, v = _latest(statements.get(("A", item), []), today, 640)
+    return v
+
+
+def acquirers_multiple(statements: dict, market_cap_fin, today: dt.date | None = None):
+    """Tobias Carlisle's acquirer's multiple: enterprise value / operating income (TTM).
+
+    EV = market cap + total debt + preferred equity + minority interest - cash and
+    short-term investments (latest balance sheet). Returns ``(multiple, ev, operating
+    income)``. The multiple is None when operating income is not positive, when EV is not
+    positive (mostly banks and insurers, where neither number means much), or when the
+    company reports no balance sheet. Lower is cheaper.
+    """
+    _, op = _latest(statements.get(("T", "operating_income"), []), today, 500)
+    if op is None:
+        _, op = _latest(statements.get(("T", "ebit"), []), today, 500)
+    if op is None:
+        _, op = _latest(statements.get(("A", "operating_income"), []) or statements.get(("A", "ebit"), []),
+                        today, 640)
+    if not market_cap_fin or market_cap_fin <= 0:
+        return None, None, op
+    if _balance(statements, "equity", today) is None and _balance(statements, "total_assets", today) is None:
+        return None, None, op  # no balance sheet: missing debt / cash cannot be read as zero
+    cash = _balance(statements, "cash", today)
+    if cash is None:
+        cash = _balance(statements, "cash_only", today)
+    # Yahoo leaves out items that are zero (a company without debt has no TotalDebt).
+    ev = market_cap_fin + sum(_balance(statements, item, today) or 0.0
+                              for item in ("total_debt", "preferred_equity", "minority_interest")) - (cash or 0.0)
+    if op is None or op <= 0 or ev <= 0:
+        return None, ev, op
+    return ev / op, ev, op
+
+
+F_SCORE_TESTS = ("roa", "cfo", "droa", "accrual", "dlever", "dliquid", "eq_offer", "dmargin", "dturn")
+
+
+def piotroski_f_score(statements: dict, today: dt.date | None = None, max_age_days: int = 640):
+    """Piotroski F-score (0-9) from the two latest fiscal years.
+
+    One point each for: positive ROA, positive operating cash flow, higher ROA, operating
+    cash flow above net income, lower long-term debt / total assets, higher current
+    ratio, no more shares outstanding, higher gross margin, higher asset turnover.
+    ROA and asset turnover use total assets at the start of the year when available.
+
+    Returns ``(score, detail)`` where detail is a 9-character string of 1/0 in the order
+    of ``F_SCORE_TESTS``; ``(None, None)`` unless all nine tests can be evaluated (banks
+    and insurers report no current assets or gross profit).
+    """
+    def series(item):
+        return statements.get(("A", item), [])
+
+    assets = series("total_assets")
+    if not assets:
+        return None, None
+    y1, ta1 = assets[-1]
+    if today and (today - y1).days > max_age_days:
+        return None, None
+    y0, y_1 = _years_before(y1, 1), _years_before(y1, 2)
+
+    def at(item, d, default=None):
+        v = _find(series(item), d, 45)
+        return default if v is None else v
+
+    def gross(d):
+        gp = at("gross_profit", d)
+        if gp is None and at("revenue", d) is not None and at("cost_of_revenue", d) is not None:
+            gp = at("revenue", d) - at("cost_of_revenue", d)
+        return gp
+
+    def shares(d):
+        return at("shares", d) if series("shares") else at("diluted_shares", d)
+
+    ta0, ta_1 = at("total_assets", y0), at("total_assets", y_1)
+    ni1 = at("net_income", y1) if series("net_income") else at("net_income_common", y1)
+    ni0 = at("net_income", y0) if series("net_income") else at("net_income_common", y0)
+    values = [ta0, ni1, ni0, at("ocf", y1), at("revenue", y1), at("revenue", y0), gross(y1), gross(y0),
+              at("current_assets", y1), at("current_assets", y0), at("current_liabilities", y1),
+              at("current_liabilities", y0), shares(y1), shares(y0)]
+    if any(v is None for v in values) or ta1 <= 0 or ta0 <= 0:
+        return None, None
+    ocf1, rev1, rev0 = at("ocf", y1), at("revenue", y1), at("revenue", y0)
+    if rev1 <= 0 or rev0 <= 0 or at("current_liabilities", y1) <= 0 or at("current_liabilities", y0) <= 0:
+        return None, None
+    begin1 = ta0
+    begin0 = ta_1 if ta_1 and ta_1 > 0 else ta0
+    roa1, roa0 = ni1 / begin1, ni0 / begin0
+    # A company without long-term debt has no LongTermDebt item.
+    lever1, lever0 = at("long_term_debt", y1, 0.0) / ta1, at("long_term_debt", y0, 0.0) / ta0
+    tests = [
+        roa1 > 0,
+        ocf1 > 0,
+        roa1 > roa0,
+        ocf1 / begin1 > roa1,
+        lever1 <= lever0 if lever0 else lever1 == 0,
+        at("current_assets", y1) / at("current_liabilities", y1) > at("current_assets", y0) / at("current_liabilities", y0),
+        shares(y1) <= shares(y0),
+        gross(y1) / rev1 > gross(y0) / rev0,
+        rev1 / begin1 > rev0 / begin0,
+    ]
+    return sum(tests), "".join("1" if t else "0" for t in tests)
+
+
 def compute(statements: dict, stats: dict, today: dt.date | None = None, market_cap_fin=None) -> dict:
     """Return the metrics stored in the ``metrics`` table (financial-currency units).
 
@@ -287,6 +396,10 @@ def compute(statements: dict, stats: dict, today: dt.date | None = None, market_
     # Yahoo's PEG is built on its own P/E: drop it together with a broken P/E.
     peg = stats.get("peg_5y") if stats.get("peg_5y") is not None else stats.get("peg_ratio")
     out["peg_5y"] = None if out["pe_basis"] == "invalid" else peg
+
+    out["acquirers_multiple"], out["enterprise_value"], out["operating_income_ttm"] = acquirers_multiple(
+        statements, market_cap_fin, today)
+    out["f_score"], out["f_score_detail"] = piotroski_f_score(statements, today)
 
     annual_rev = statements.get(("A", "revenue"), [])
     out["latest_fy_end"] = annual_rev[-1][0].isoformat() if annual_rev else None
