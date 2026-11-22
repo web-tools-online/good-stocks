@@ -103,6 +103,13 @@ def fetch_one(client, listing: dict) -> dict:
                 profile["financial_currency"] = currency
         except Exception as exc:  # keep the profile and key statistics
             rec["error"] = f"timeseries: {type(exc).__name__}: {exc}"[:300]
+        try:
+            # Only the channel is kept, not the ~2,500 prices behind it.
+            rec["stats"]["channel"] = metrics.regression_channel(
+                client.price_history(listing["symbol"]), config.CHANNEL_LENGTH, config.CHANNEL_MIN_BARS)
+        except Exception as exc:
+            error = f"chart: {type(exc).__name__}: {exc}"
+            rec["error"] = (rec["error"] + "; " + error if rec.get("error") else error)[:300]
     return rec
 
 

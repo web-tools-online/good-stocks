@@ -6,6 +6,7 @@ data the screener needs in two requests per ticker:
 
 * ``quoteSummary`` - profile (name, sector, country), price, market cap, ROE, D/E ...
 * ``fundamentals-timeseries`` - annual / quarterly / trailing statement items + PEG.
+* ``chart`` - ten years of daily closing prices for the regression channel.
 
 The ``parse_*`` functions are pure and unit tested against recorded response shapes.
 """
@@ -22,6 +23,7 @@ log = logging.getLogger(__name__)
 
 QUOTE_SUMMARY_URL = "https://query2.finance.yahoo.com/v10/finance/quoteSummary/{symbol}"
 TIMESERIES_URL = "https://query2.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/{symbol}"
+CHART_URL = "https://query2.finance.yahoo.com/v8/finance/chart/{symbol}"
 QUOTE_SUMMARY_MODULES = "price,summaryDetail,financialData,defaultKeyStatistics,assetProfile,quoteType"
 
 # Yahoo timeseries key -> canonical item name stored in the database.
@@ -191,6 +193,24 @@ def parse_timeseries(payload: dict) -> tuple[list[list], float | None, str | Non
     return rows, peg, currency
 
 
+def parse_chart(payload: dict) -> list[float]:
+    """Daily closing prices, oldest first, from a chart response.
+
+    Yahoo's ``close`` is adjusted for splits but not for dividends, like TradingView's default
+    chart. Days without a price (``null``) are skipped.
+    """
+    result = ((payload or {}).get("chart") or {}).get("result") or []
+    if not result:
+        return []
+    quotes = ((result[0].get("indicators") or {}).get("quote") or [{}])[0] or {}
+    closes = []
+    for v in quotes.get("close") or []:
+        v = _num(v)
+        if v is not None and v > 0:
+            closes.append(v)
+    return closes
+
+
 # --------------------------------------------------------------------------- network
 
 class _RateLimiter:
@@ -272,6 +292,10 @@ class YahooClient:
             "period2": int(now.timestamp()) + 86400,
         }
         return parse_timeseries(self._get_json(TIMESERIES_URL.format(symbol=symbol), params))
+
+    def price_history(self, symbol: str, years: int = 10) -> list[float]:
+        params = {"range": f"{years}y", "interval": "1d", "includePrePost": "false", "events": ""}
+        return parse_chart(self._get_json(CHART_URL.format(symbol=symbol), params))
 
     def screen_exchange(self, exchange: str, region: str | None = None) -> list[dict]:
         """Return all equity quotes listed on a Yahoo exchange code (e.g. ``PAR``)."""

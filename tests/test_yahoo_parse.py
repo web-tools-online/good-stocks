@@ -97,3 +97,12 @@ def test_parse_dividend_and_split_fields():
     ]}})
     assert ["T", "dividends_paid_common", "2026-06-30", -1.805e8] in rows
     assert ["A", "dividends_paid", "2025-12-31", -1.558e8] in rows
+
+
+def test_parse_chart_skips_missing_days():
+    from stockdb.yahoo import parse_chart
+
+    payload = {"chart": {"result": [{"timestamp": [1, 2, 3, 4],
+                                     "indicators": {"quote": [{"close": [10.5, None, 11.0, 0]}]}}]}}
+    assert parse_chart(payload) == [10.5, 11.0]
+    assert parse_chart({"chart": {"result": None, "error": {"code": "Not Found"}}}) == []

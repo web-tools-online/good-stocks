@@ -78,3 +78,8 @@ MAX_STALE_DAYS = 45
 
 # ECB euro reference rates, used to convert everything to USD for sorting/filtering.
 ECB_RATES_URL = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"
+
+# Standard deviation channel (linear regression of daily closes, like TradingView's
+# "Std Dev Chn" / "Linear Regression Channel" with Length 2500 = about ten years).
+CHANNEL_LENGTH = 2500
+CHANNEL_MIN_BARS = 500  # younger listings (< ~2 years of prices) get no channel

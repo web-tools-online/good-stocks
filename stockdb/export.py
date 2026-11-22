@@ -46,6 +46,11 @@ FIELDS = [
     ("am", "m.acquirers_multiple", 2),
     ("fs", "m.f_score", None),
     ("fsd", "m.f_score_detail", None),
+    ("sd", "m.channel_z", 2),
+    ("sdm", "m.channel_mid", 4),
+    ("sds", "m.channel_sd", 4),
+    ("sdt", "m.channel_trend", 4),
+    ("sdn", "m.channel_bars", None),
     ("asof", "m.as_of", None),
 ]
 
@@ -57,7 +62,9 @@ CSV_COLUMNS = [
     ("ROE", "roe"),
     ("Debt to Equity", "de"), ("Free Cash Flow (TTM)", "fcf"), ("Financial Currency", "fcur"),
     ("Free Cash Flow (TTM, USD)", "fcfu"), ("FCF Yield", "fy"), ("PEG (5Y expected)", "peg"),
-    ("Acquirer's Multiple", "am"), ("Piotroski F-Score", "fs"), ("Data as of", "asof"),
+    ("Acquirer's Multiple", "am"), ("Piotroski F-Score", "fs"),
+    ("Std Dev Channel (sigma)", "sd"), ("Channel Line", "sdm"), ("Channel 1 Std Dev", "sds"),
+    ("Channel Trend per Year", "sdt"), ("Channel Days", "sdn"), ("Data as of", "asof"),
 ]
 
 
@@ -141,7 +148,7 @@ def print_report(db_path: str, top: int = 15) -> None:
         print(f"  {r[1]:6}  {r[0]}")
     print("Metric coverage (non-null share of active listings with metrics):")
     cols = ["rev_growth_1y", "earn_growth_4y", "rev_growth_4y", "roe", "debt_to_equity", "fcf_ttm", "peg_5y",
-            "acquirers_multiple", "f_score", "market_cap_usd"]
+            "acquirers_multiple", "f_score", "channel_z", "market_cap_usd"]
     for market in config.MARKETS:
         n = con.execute("SELECT COUNT(*) FROM metrics JOIN listings USING (symbol) WHERE market = ?",
                         (market,)).fetchone()[0]
