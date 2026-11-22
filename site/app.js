@@ -19,6 +19,8 @@ const DEFAULT_CRITERIA = [
   { id: "fs",  label: "Piotroski F-score",        op: "≥", value: 7,  unit: "/9", off: true },
   // price position in the 10-year linear regression channel, in standard deviations (-1 = on the -1σ line)
   { id: "sd",  label: "Std dev channel (10Y)",    op: "≤", value: -1, unit: "σ", off: true },
+  // slope of that channel's regression line per year: ≥ 0 keeps out long-term downtrends
+  { id: "sdt", label: "Channel trend (10Y)",      op: "≥", value: 0,  unit: "%/yr", off: true },
 ];
 
 const PASS = {
@@ -33,10 +35,11 @@ const PASS = {
   am:  (r, t) => r.am != null && r.am > 0 && r.am <= t,
   fs:  (r, t) => r.fs != null && r.fs >= t,
   sd:  (r, t) => r.sd != null && r.sd <= t,
+  sdt: (r, t) => r.sdt != null && r.sdt * 100 >= t,
 };
 
 // Value a criterion looks at; an optional criterion is skipped when it is missing.
-const VALUE = { g1: "g1", e4: "e4", g4: "g4", roe: "roe", de: "de", fcf: "fcf", fy: "fy", peg: "peg", am: "am", fs: "fs", sd: "sd" };
+const VALUE = { g1: "g1", e4: "e4", g4: "g4", roe: "roe", de: "de", fcf: "fcf", fy: "fy", peg: "peg", am: "am", fs: "fs", sd: "sd", sdt: "sdt" };
 
 const BASIS_NOTE = {
   ttm: "Last 12 months vs the 12 months before",
@@ -68,7 +71,7 @@ const COLUMNS = [
   { key: "am",  label: "Acquirer's Multiple", crit: "am", sort: (r) => r.am },
   { key: "fs",  label: "F-Score", crit: "fs", sort: (r) => r.fs },
   { key: "sd",  label: "Std Dev Channel", crit: "sd", sort: (r) => r.sd },
-  { key: "sdt", label: "Channel Trend", sort: (r) => r.sdt },
+  { key: "sdt", label: "Channel Trend", crit: "sdt", sort: (r) => r.sdt },
   { key: "pe",  label: "P/E (TTM)", sort: (r) => r.pe },
   { key: "dy",  label: "Dividend Yield", sort: (r) => r.dy },
 ];
@@ -342,7 +345,7 @@ function trendCell(r) {
   if (r.sdt == null) return `<td class="na">—</td>`;
   const p = r.sdt * 100;
   const title = `The ${(r.sdn / 252).toFixed(1)}-year regression line ${p >= 0 ? "rises" : "falls"} by ${Math.abs(p).toFixed(1)}% of its current value per year`;
-  return `<td title="${esc(title)}">${p > 0 ? "+" : p < 0 ? "−" : ""}${Math.abs(p).toFixed(1)}%/yr</td>`;
+  return `<td class="${cellClass(r, "sdt")}" title="${esc(title)}">${p > 0 ? "+" : p < 0 ? "−" : ""}${Math.abs(p).toFixed(1)}%/yr</td>`;
 }
 
 // A price in the trading currency (GBp shown as pence).
