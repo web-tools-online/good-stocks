@@ -331,6 +331,46 @@ def piotroski_f_score(statements: dict, today: dt.date | None = None, max_age_da
     return sum(tests), "".join("1" if t else "0" for t in tests)
 
 
+def regression_channel(closes: list[float], length: int = 2500, min_bars: int = 500) -> dict | None:
+    """Linear regression channel over the last ``length`` daily closes.
+
+    The same calculation as TradingView's linear regression / standard deviation channel:
+    a straight line fitted to the closing prices (least squares) and the standard deviation
+    of the prices around that line (``n - 1`` in the denominator). Returns
+
+    * ``z``     - where the last close lies, in standard deviations from the line
+                  (-1.5 = halfway between the -1 and -2 lines)
+    * ``mid``   - the line's value on the last day (trading currency)
+    * ``sd``    - one standard deviation (trading currency)
+    * ``trend`` - the line's slope per year (252 trading days) relative to ``mid``
+    * ``bars``  - number of closes used
+
+    ``None`` with fewer than ``min_bars`` closes.
+    """
+    ys = [y for y in (closes or []) if y is not None][-length:]
+    n = len(ys)
+    if n < max(min_bars, 3):
+        return None
+    x_mean = (n - 1) / 2
+    y_mean = sum(ys) / n
+    sxx = sum((x - x_mean) ** 2 for x in range(n))
+    sxy = sum((x - x_mean) * (y - y_mean) for x, y in enumerate(ys))
+    slope = sxy / sxx
+    intercept = y_mean - slope * x_mean
+    sq = sum((y - (intercept + slope * x)) ** 2 for x, y in enumerate(ys))
+    sd = (sq / (n - 1)) ** 0.5
+    mid = intercept + slope * (n - 1)
+    if sd <= 0:
+        return None
+    return {
+        "z": (ys[-1] - mid) / sd,
+        "mid": mid,
+        "sd": sd,
+        "trend": slope * 252 / mid if mid > 0 else None,
+        "bars": n,
+    }
+
+
 def compute(statements: dict, stats: dict, today: dt.date | None = None, market_cap_fin=None) -> dict:
     """Return the metrics stored in the ``metrics`` table (financial-currency units).
 
@@ -400,6 +440,13 @@ def compute(statements: dict, stats: dict, today: dt.date | None = None, market_
     out["acquirers_multiple"], out["enterprise_value"], out["operating_income_ttm"] = acquirers_multiple(
         statements, market_cap_fin, today)
     out["f_score"], out["f_score_detail"] = piotroski_f_score(statements, today)
+
+    channel = stats.get("channel") or {}
+    out["channel_z"] = channel.get("z")
+    out["channel_mid"] = channel.get("mid")
+    out["channel_sd"] = channel.get("sd")
+    out["channel_trend"] = channel.get("trend")
+    out["channel_bars"] = channel.get("bars")
 
     annual_rev = statements.get(("A", "revenue"), [])
     out["latest_fy_end"] = annual_rev[-1][0].isoformat() if annual_rev else None

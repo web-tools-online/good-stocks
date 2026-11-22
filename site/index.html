@@ -99,7 +99,7 @@
     </div>
 
     <section class="criteria-panel" id="criteria-panel" hidden aria-label="Strategy criteria">
-      <p class="muted small">A stock passes a criterion when its value meets the threshold. Missing data counts as a fail, except PEG: a stock without analysts' growth forecasts is scored without it (e.g. 7/7). The acquirer's multiple and the F-score are switched off by default. Untick a criterion to ignore it. Your settings are saved in this browser.</p>
+      <p class="muted small">A stock passes a criterion when its value meets the threshold. Missing data counts as a fail, except PEG: a stock without analysts' growth forecasts is scored without it (e.g. 7/7). The acquirer's multiple, the F-score and the standard deviation channel are switched off by default. Untick a criterion to ignore it. Your settings are saved in this browser.</p>
       <div id="criteria-list" class="criteria-list"></div>
       <button class="btn btn-quiet" id="criteria-reset">Reset to defaults</button>
     </section>
@@ -147,6 +147,7 @@
             <dt>PEG (5Y expected)</dt><dd>P/E ÷ analysts' expected yearly earnings growth over the next 5 years. Many European companies have no analyst forecast; they are scored without PEG (e.g. 7/7 instead of x/8).</dd>
             <dt>Acquirer's Multiple</dt><dd>Enterprise value ÷ operating income (TTM), as used by Tobias Carlisle. Enterprise value = market cap + debt + preferred stock + minority interest − cash and short-term investments. It shows what a buyer of the whole company pays for its operating earnings; lower is cheaper. Not shown when operating income or enterprise value is not positive (it means little for banks and insurers).</dd>
             <dt>F-Score</dt><dd>Joseph Piotroski's 0–9 score of financial health, comparing the latest fiscal year with the one before. One point each for: positive return on assets, positive operating cash flow, a higher return on assets, operating cash flow above net income, lower long-term debt relative to assets, a higher current ratio, no new shares issued, a higher gross margin and a higher asset turnover. 8–9 is strong, 0–2 weak. Hover a value to see which tests passed. Shown only when all nine tests can be evaluated.</dd>
+            <dt>Std Dev Channel</dt><dd>Where today's price sits in a linear regression channel of the last 2,500 daily closes (about ten years), the same as TradingView's standard deviation / linear regression channel with Length 2500 and Source Close. A straight line is fitted through the prices; the value says how many standard deviations of the prices around that line the current price is above (+) or below (−) it. −1σ means on the lower −1 line, −2σ on the −2 line. The criterion (off by default) looks for prices at or below a chosen line, i.e. cheap relative to the stock's own long-term trend. Hover a value for the price of each line and the trend of the line per year; a falling line means the stock has been in a long downtrend. Listings with less than two years of prices have no value.</dd>
           </dl>
         </div>
         <div>

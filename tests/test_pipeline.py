@@ -223,3 +223,37 @@ def test_export_hides_impossible_yield_saved_before_checks(workdir):
     data = json.loads((out / "data" / "stocks.json").read_text())
     good = next(dict(zip(data["fields"], r)) for r in data["rows"] if r[0] == "GOOD")
     assert good["dy"] is None and good["dyb"] == "invalid"
+
+
+def test_fetch_one_adds_regression_channel():
+    class Client:
+        def quote_summary(self, symbol):
+            return ({"name": "Apple", "country": "United States", "currency": "USD",
+                     "financial_currency": "USD", "quote_type": "EQUITY"}, {"price": 100.0})
+
+        def timeseries(self, symbol):
+            return ([], None, "USD")
+
+        def price_history(self, symbol):
+            return [100 + (i % 7) for i in range(3000)]
+
+    rec = pipeline.fetch_one(Client(), {"symbol": "AAPL", "market": "US"})
+    assert rec["stats"]["channel"]["bars"] == 2500
+    assert "error" not in rec
+
+
+def test_fetch_one_keeps_data_when_chart_fails():
+    class Client:
+        def quote_summary(self, symbol):
+            return ({"name": "Apple", "country": "United States", "currency": "USD",
+                     "financial_currency": "USD", "quote_type": "EQUITY"}, {"price": 100.0})
+
+        def timeseries(self, symbol):
+            return ([["A", "revenue", "2025-12-31", 1e9]], None, "USD")
+
+        def price_history(self, symbol):
+            raise RuntimeError("HTTP 500")
+
+    rec = pipeline.fetch_one(Client(), {"symbol": "AAPL", "market": "US"})
+    assert rec["status"] == "ok" and rec["series"]
+    assert rec["error"].startswith("chart:")

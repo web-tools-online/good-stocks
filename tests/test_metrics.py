@@ -296,3 +296,43 @@ def test_acquirers_multiple_not_meaningful():
     st[("Q", "cash")] = [(D(2025, 12, 31), 2000.0)]
     assert metrics.acquirers_multiple(st, 1000)[0] is None  # negative EV
     assert metrics.acquirers_multiple({("T", "operating_income"): [(D(2025, 12, 31), 50.0)]}, 1000)[0] is None
+
+
+# --------------------------------------------------------------------------- regression channel
+
+def test_regression_channel_matches_least_squares():
+    import numpy as np
+
+    rng = np.random.default_rng(1)
+    closes = list(50 + 0.02 * np.arange(2600) + rng.normal(0, 3, 2600))
+    ch = metrics.regression_channel(closes, length=2500)
+    ys = np.array(closes[-2500:])
+    xs = np.arange(2500)
+    slope, intercept = np.polyfit(xs, ys, 1)
+    mid = intercept + slope * 2499
+    sd = np.std(ys - (intercept + slope * xs), ddof=1)
+    assert ch["bars"] == 2500
+    assert abs(ch["mid"] - mid) < 1e-6
+    assert abs(ch["sd"] - sd) < 1e-6
+    assert abs(ch["z"] - (ys[-1] - mid) / sd) < 1e-9
+    assert abs(ch["trend"] - slope * 252 / mid) < 1e-9
+
+
+def test_regression_channel_position():
+    # a straight line with a +/-1 zigzag: sd ~ 1; the last close drops 2 below the line
+    closes = [10 + 0.01 * i + (1 if i % 2 else -1) for i in range(999)] + [10 + 0.01 * 999 - 2]
+    ch = metrics.regression_channel(closes)
+    assert ch["z"] < -1.8
+    assert ch["trend"] > 0
+
+
+def test_regression_channel_needs_enough_history():
+    assert metrics.regression_channel([10.0] * 400) is None
+    assert metrics.regression_channel([]) is None
+    assert metrics.regression_channel([10.0] * 600) is None  # flat: no deviation
+
+
+def test_compute_takes_channel_from_stats():
+    out = metrics.compute({}, {"channel": {"z": -1.2, "mid": 100.0, "sd": 5.0, "trend": 0.08, "bars": 2500}})
+    assert out["channel_z"] == -1.2 and out["channel_bars"] == 2500
+    assert metrics.compute({}, {})["channel_z"] is None

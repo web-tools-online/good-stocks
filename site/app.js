@@ -17,6 +17,8 @@ const DEFAULT_CRITERIA = [
   // off by default; a missing value (operating loss, too little data) counts as a fail
   { id: "am",  label: "Acquirer's multiple",      op: "≤", value: 10, unit: "×", off: true },
   { id: "fs",  label: "Piotroski F-score",        op: "≥", value: 7,  unit: "/9", off: true },
+  // price position in the 10-year linear regression channel, in standard deviations (-1 = on the -1σ line)
+  { id: "sd",  label: "Std dev channel (10Y)",    op: "≤", value: -1, unit: "σ", off: true },
 ];
 
 const PASS = {
@@ -30,10 +32,11 @@ const PASS = {
   peg: (r, t) => r.peg != null && r.peg > 0 && r.peg <= t,
   am:  (r, t) => r.am != null && r.am > 0 && r.am <= t,
   fs:  (r, t) => r.fs != null && r.fs >= t,
+  sd:  (r, t) => r.sd != null && r.sd <= t,
 };
 
 // Value a criterion looks at; an optional criterion is skipped when it is missing.
-const VALUE = { g1: "g1", e4: "e4", g4: "g4", roe: "roe", de: "de", fcf: "fcf", fy: "fy", peg: "peg", am: "am", fs: "fs" };
+const VALUE = { g1: "g1", e4: "e4", g4: "g4", roe: "roe", de: "de", fcf: "fcf", fy: "fy", peg: "peg", am: "am", fs: "fs", sd: "sd" };
 
 const BASIS_NOTE = {
   ttm: "Last 12 months vs the 12 months before",
@@ -64,6 +67,7 @@ const COLUMNS = [
   { key: "peg", label: "PEG (5Y Exp)", crit: "peg", sort: (r) => r.peg },
   { key: "am",  label: "Acquirer's Multiple", crit: "am", sort: (r) => r.am },
   { key: "fs",  label: "F-Score", crit: "fs", sort: (r) => r.fs },
+  { key: "sd",  label: "Std Dev Channel", crit: "sd", sort: (r) => r.sd },
   { key: "pe",  label: "P/E (TTM)", sort: (r) => r.pe },
   { key: "dy",  label: "Dividend Yield", sort: (r) => r.dy },
 ];
@@ -315,6 +319,30 @@ function amCell(r) {
   return `<td class="${cellClass(r, "am")}">${numFmt(r.am, 1)}</td>`;
 }
 
+const sigmaFmt = (v) => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(2) + "σ";
+
+function channelCell(r) {
+  if (r.sd == null) {
+    return `<td class="na" title="${esc("Fewer than 2 years of daily prices, or the price history could not be downloaded")}">—</td>`;
+  }
+  const years = r.sdn ? (r.sdn / 252).toFixed(1) : "?";
+  const lines = [`Linear regression channel of the last ${(r.sdn || 0).toLocaleString("en-US")} daily closes (≈ ${years} years)`,
+    `Price is ${Math.abs(r.sd).toFixed(2)} standard deviations ${r.sd < 0 ? "below" : "above"} the regression line`];
+  if (r.sdm != null && r.sds != null) {
+    const f = (v) => priceFmt(v, r.cur);
+    lines.push(`−2σ ${f(r.sdm - 2 * r.sds)} · −1σ ${f(r.sdm - r.sds)} · line ${f(r.sdm)} · +1σ ${f(r.sdm + r.sds)} · +2σ ${f(r.sdm + 2 * r.sds)}`);
+  }
+  if (r.sdt != null) lines.push(`Trend of the line: ${r.sdt >= 0 ? "+" : ""}${(r.sdt * 100).toFixed(1)}% per year`);
+  return `<td class="${cellClass(r, "sd")}" title="${esc(lines.join("\n"))}">${sigmaFmt(r.sd)}</td>`;
+}
+
+// A price in the trading currency (GBp shown as pence).
+function priceFmt(v, cur) {
+  if (v == null || !isFinite(v)) return "—";
+  const d = Math.abs(v) >= 100 ? 0 : Math.abs(v) >= 1 ? 2 : 4;
+  return v.toFixed(d) + " " + (cur || "");
+}
+
 function renderBody() {
   const start = state.page * state.pageSize;
   const pageRows = state.filtered.slice(start, start + state.pageSize);
@@ -342,6 +370,7 @@ function renderBody() {
       <td class="${r.peg == null ? "na" : cellClass(r, "peg")}"${r.peg == null ? ` title="${esc(r.peb === "invalid" ? "Hidden together with the P/E (data error) - PEG is left out of this stock's score" : "No analyst growth forecast - PEG is left out of this stock's score")}"` : ""}>${numFmt(r.peg)}</td>
       ${amCell(r)}
       ${fScoreCell(r)}
+      ${channelCell(r)}
       <td class="${r.pe == null ? "na" : ""}"${r.pe == null && r.peb === "invalid" ? ` title="${esc(PE_HIDDEN)}"` : ""}>${numFmt(r.pe, 1)}</td>
       ${dividendCell(r)}
     </tr>`;
@@ -443,12 +472,12 @@ function syncControls() {
 function downloadView() {
   const head = ["Ticker", "Company", "Market", "Exchange", "Country", "Sector", "Industry", "Market Cap (USD)",
     "Criteria met", "Revenue Growth 1Y %", "Earnings Growth 4Y %", "Revenue Growth 4Y %", "ROE %",
-    "Debt to Equity", "Free Cash Flow TTM (USD)", "FCF Yield %", "PEG 5Y", "Acquirer's Multiple", "F-Score", "P/E TTM", "Dividend Yield %"];
+    "Debt to Equity", "Free Cash Flow TTM (USD)", "FCF Yield %", "PEG 5Y", "Acquirer's Multiple", "F-Score", "Std Dev Channel (sigma)", "P/E TTM", "Dividend Yield %"];
   const pct = (v) => (v == null ? "" : (v * 100).toFixed(2));
   const lines = [head];
   for (const r of state.filtered) {
     lines.push([r.s, r.n, r.m, r.x, r.c, r.sec, r.ind, r.mc, `${r._pass}/${r._total}`, pct(r.g1), pct(r.e4),
-      pct(r.g4), pct(r.roe), r.de, r.fcfu, pct(r.fy), r.peg, r.am, r.fs, r.pe, pct(r.dy)]);
+      pct(r.g4), pct(r.roe), r.de, r.fcfu, pct(r.fy), r.peg, r.am, r.fs, r.sd, r.pe, pct(r.dy)]);
   }
   const csv = lines.map((l) => l.map((v) => {
     const s = v == null ? "" : String(v);
@@ -501,7 +530,7 @@ function bind() {
     if (state.sortKey === key) state.sortDir = -state.sortDir;
     else {
       state.sortKey = key;
-      state.sortDir = ["s", "n", "sec", "de", "peg", "am", "pe"].includes(key) ? 1 : -1;
+      state.sortDir = ["s", "n", "sec", "de", "peg", "am", "sd", "pe"].includes(key) ? 1 : -1;
     }
     sortRows();
     state.page = 0;

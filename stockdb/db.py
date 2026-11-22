@@ -59,7 +59,13 @@ CREATE TABLE IF NOT EXISTS metrics (
     acquirers_multiple   REAL,              -- enterprise_value / operating_income_ttm (both positive)
     f_score              INTEGER,           -- Piotroski F-score 0-9 (latest vs previous fiscal year)
     f_score_detail       TEXT,              -- nine 1/0 flags, order in metrics.F_SCORE_TESTS
-    latest_fy_end        TEXT
+    latest_fy_end        TEXT,
+    -- linear regression channel of the last ~10 years of daily closes (metrics.regression_channel)
+    channel_z            REAL,              -- last close vs the line, in standard deviations
+    channel_mid          REAL,              -- the line's value on the last day (trading currency)
+    channel_sd           REAL,              -- one standard deviation (trading currency)
+    channel_trend        REAL,              -- the line's slope per year, relative to channel_mid
+    channel_bars         INTEGER            -- number of daily closes used
 );
 
 -- Current exchange rates used for the *_usd columns.
