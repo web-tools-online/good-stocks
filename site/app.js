@@ -68,6 +68,7 @@ const COLUMNS = [
   { key: "am",  label: "Acquirer's Multiple", crit: "am", sort: (r) => r.am },
   { key: "fs",  label: "F-Score", crit: "fs", sort: (r) => r.fs },
   { key: "sd",  label: "Std Dev Channel", crit: "sd", sort: (r) => r.sd },
+  { key: "sdt", label: "Channel Trend", sort: (r) => r.sdt },
   { key: "pe",  label: "P/E (TTM)", sort: (r) => r.pe },
   { key: "dy",  label: "Dividend Yield", sort: (r) => r.dy },
 ];
@@ -336,6 +337,14 @@ function channelCell(r) {
   return `<td class="${cellClass(r, "sd")}" title="${esc(lines.join("\n"))}">${sigmaFmt(r.sd)}</td>`;
 }
 
+// Slope of the channel's regression line per year, relative to its current value.
+function trendCell(r) {
+  if (r.sdt == null) return `<td class="na">—</td>`;
+  const p = r.sdt * 100;
+  const title = `The ${(r.sdn / 252).toFixed(1)}-year regression line ${p >= 0 ? "rises" : "falls"} by ${Math.abs(p).toFixed(1)}% of its current value per year`;
+  return `<td title="${esc(title)}">${p > 0 ? "+" : p < 0 ? "−" : ""}${Math.abs(p).toFixed(1)}%/yr</td>`;
+}
+
 // A price in the trading currency (GBp shown as pence).
 function priceFmt(v, cur) {
   if (v == null || !isFinite(v)) return "—";
@@ -371,6 +380,7 @@ function renderBody() {
       ${amCell(r)}
       ${fScoreCell(r)}
       ${channelCell(r)}
+      ${trendCell(r)}
       <td class="${r.pe == null ? "na" : ""}"${r.pe == null && r.peb === "invalid" ? ` title="${esc(PE_HIDDEN)}"` : ""}>${numFmt(r.pe, 1)}</td>
       ${dividendCell(r)}
     </tr>`;
@@ -472,12 +482,12 @@ function syncControls() {
 function downloadView() {
   const head = ["Ticker", "Company", "Market", "Exchange", "Country", "Sector", "Industry", "Market Cap (USD)",
     "Criteria met", "Revenue Growth 1Y %", "Earnings Growth 4Y %", "Revenue Growth 4Y %", "ROE %",
-    "Debt to Equity", "Free Cash Flow TTM (USD)", "FCF Yield %", "PEG 5Y", "Acquirer's Multiple", "F-Score", "Std Dev Channel (sigma)", "P/E TTM", "Dividend Yield %"];
+    "Debt to Equity", "Free Cash Flow TTM (USD)", "FCF Yield %", "PEG 5Y", "Acquirer's Multiple", "F-Score", "Std Dev Channel (sigma)", "Channel Trend % per year", "P/E TTM", "Dividend Yield %"];
   const pct = (v) => (v == null ? "" : (v * 100).toFixed(2));
   const lines = [head];
   for (const r of state.filtered) {
     lines.push([r.s, r.n, r.m, r.x, r.c, r.sec, r.ind, r.mc, `${r._pass}/${r._total}`, pct(r.g1), pct(r.e4),
-      pct(r.g4), pct(r.roe), r.de, r.fcfu, pct(r.fy), r.peg, r.am, r.fs, r.sd, r.pe, pct(r.dy)]);
+      pct(r.g4), pct(r.roe), r.de, r.fcfu, pct(r.fy), r.peg, r.am, r.fs, r.sd, pct(r.sdt), r.pe, pct(r.dy)]);
   }
   const csv = lines.map((l) => l.map((v) => {
     const s = v == null ? "" : String(v);

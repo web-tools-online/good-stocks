@@ -28,6 +28,7 @@ It shows the metrics from the HelloStocks screener (revenue and earnings growth,
 | Acquirer's Multiple | Enterprise value ÷ operating income (TTM). EV = market cap + total debt + preferred stock + minority interest − cash and short-term investments. Lower is cheaper. Empty when operating income or EV is not positive. |
 | F-Score | Piotroski F-score, 0–9: one point each for positive ROA, positive operating cash flow, higher ROA, operating cash flow > net income, lower long-term debt / assets, higher current ratio, no new shares, higher gross margin, higher asset turnover (latest fiscal year vs. the one before). Empty unless all nine tests can be evaluated. |
 | Std Dev Channel | Position of the latest close in a linear regression channel of the last 2,500 daily closes (≈ 10 years), in standard deviations from the regression line (like TradingView's *Std Dev Chn* / *Linear Regression Channel*, Length 2500, Source Close). −1σ = on the lower −1 line. Empty with less than 2 years of prices. |
+| Channel Trend | Slope of that regression line per year, as a percentage of its current value. Negative = a long-term downtrend. |
 | P/E (TTM) | Share price ÷ earnings per share of the last 12 months. |
 | Dividend Yield | Annual dividend ÷ share price (Yahoo's forward dividend, or the last 12 months' if there is no forecast). |
 
